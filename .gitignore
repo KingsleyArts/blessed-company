@@ -23,3 +23,7 @@ Build/
 overnight/
 Content/Developers/
 Content/Collections/
+node_modules/
+dist/
+src/data/generated/
+*.tsbuildinfo
