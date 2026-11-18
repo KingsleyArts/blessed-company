@@ -103,4 +103,4 @@ npm run build   # CSV -> TS, typecheck, static bundle in dist/
 npm run lint
 npm run soak    # headless soak bot (Stage 3)
 ```
-The Unreal build commands and native C++ tests live in the reference repo `C:\dev	ower-of-the-lost` (read-only).
+The Unreal build commands and native C++ tests live in the reference repo `C:/dev/tower-of-the-lost` (read-only).
