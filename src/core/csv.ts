@@ -28,11 +28,14 @@ export function parseList(cell: string): string[] {
   return cell === '' ? [] : cell.split('|');
 }
 
+// Plain decimal numbers only: Number() alone would turn ' ' into 0 and accept '0x10' or 'Infinity'.
+const NUMERIC = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+
 /** Convert a cell by inferred type: number (-1 = TBD kept as -1), boolean, else string. */
 export function parseCell(cell: string): string | number | boolean {
   if (cell === 'true') return true;
   if (cell === 'false') return false;
-  if (cell !== '' && !Number.isNaN(Number(cell))) return Number(cell);
+  if (NUMERIC.test(cell)) return Number(cell);
   return cell;
 }
 
