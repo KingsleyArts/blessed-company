@@ -21,8 +21,12 @@ a reference for porting, not as folders that exist here. The `Core/` rules were 
 ## Layout
 - `docs/` - GDD (`gdd.md`, still the jam-era design), design decisions, the goddess RPG planning docs, `reviews/`
 - `data/` - every tunable value as CSV (Unreal DataTable sources); `data/narrative/` for text
-- `Source/` - the Unreal C++ module; `tests/` - native tests for `Source/BlessedCompany/Core`
+- `src/` - Phaser 3 + TypeScript build: `core/` (pure rules), `game/` (scenes), `ui/` (DOM), `data/generated/` (from CSV)
+- `Source/`, `tests/` - legacy Unreal-era folders (empty or notes only)
 - `spec-tests/` - shared rule scenarios (seed + inputs -> expected outcome)
 - `scripts/` - data sync and check scripts
 - `reports/` - architecture, sim, perf, QA, playtest, code-review, asset register, milestone and handoff reports
 - `.claude/` - agent definitions (`agents/`) and slash commands (`commands/`)
+
+## Develop
+`npm install`, then `npm run dev` / `npm test` / `npm run build`. See `CLAUDE.md`.

@@ -2,7 +2,7 @@
 
 This folder is the repository root. The main session is the ORCHESTRATOR; the director (the user) has final say.
 
-> **Legacy note (Nov 18, 2026):** the layout, ownership paths and build commands below describe the Unreal prototype this repo was copied from (jam schedule included). The Phaser build will replace the Build and test commands and the `Source/` rows; update them when the Phaser project is created. `docs/` ownership stays with the director.
+> **Stack note (Nov 18, 2026):** the project is now a Phaser 3 + TypeScript + Vite web build (Stage 0 scaffold). Rules live in `src/core/` (no Phaser imports), scenes in `src/game/`, DOM menus in `src/ui/`. The ownership table and gates below are inherited from the Unreal jam; `Source/BlessedCompany/` and `tests/` rows now map to `src/` and `*.test.ts`, and the gate schedule is superseded by `docs/PHASER_IMPLEMENTATION_PLAN.md` stages. `docs/` ownership stays with the director.
 
 ## Sources of truth
 - The GDD is `docs/gdd.md`, one file edited in place.
@@ -14,8 +14,10 @@ This folder is the repository root. The main session is the ORCHESTRATOR; the di
 |---|---|---|
 | `docs/` | GDD and `reviews/` | director |
 | `data/*.csv` | Tunable values (DataTable sources) | data-designer |
-| `Source/BlessedCompany/` | Unreal C++ module; `Core/` holds engine-agnostic systems (stat resolver, event bus, floor generator, DataTable structs) | programmer |
-| `tests/` | Native tests for `Core/` (see each `tests.cpp` header for the build line) | programmer |
+| `src/core/` | Pure TS rules (stat resolver, event bus, floor generator, combat sim); no Phaser imports (lint-enforced) | programmer |
+| `src/data/generated/` | Generated from `data/*.csv` by `npm run data`; gitignored | tools-programmer |
+| `src/game/`, `src/ui/` | Phaser scenes (canvas) and DOM overlays (Temple, menus) | ui-programmer |
+| `src/**/*.test.ts` | Vitest tests next to the rules they cover | programmer |
 | `data/narrative/` | Text lines and prompts | narrative-writer |
 | `spec-tests/` | Shared rule scenarios as JSON | qa-tester |
 | `scripts/` | Data sync and check scripts | tools-programmer |
@@ -92,11 +94,13 @@ Escalate in one message: what is blocked, the question, options with a recommend
 - The submission is made by the director, never by an agent.
 
 ## Build and test commands
-Run from a PowerShell prompt at the repo root. Close the Unreal editor before building.
+Run from the repo root (Node 20+).
 ```
-# Editor target (UE 5.7 at C:\Program Files\Epic Games\UE_5.7)
-& 'C:\Program Files\Epic Games\UE_5.7\Engine\Build\BatchFiles\Build.bat' BlessedCompanyEditor Win64 Development -Project="$PWD\BlessedCompany.uproject" -WaitMutex -NoHotReloadFromIDE
+npm install
+npm run dev     # CSV -> TS, then Vite dev server (http://localhost:5173)
+npm test        # CSV -> TS, then Vitest
+npm run build   # CSV -> TS, typecheck, static bundle in dist/
+npm run lint
+npm run soak    # headless soak bot (Stage 3)
 ```
-Native tests (MSVC from VS 2022, in an "x64 Native Tools Command Prompt"): see `tests/README.md`.
-
-(Add per-system notes here as the build grows.)
+The Unreal build commands and native C++ tests live in the reference repo `C:/dev/tower-of-the-lost` (read-only).
