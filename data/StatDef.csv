@@ -1,0 +1,32 @@
+Name,Tier,AllowedClasses,EssenceBaseCost,EssenceCostGrowth,GoldUnlockCost,MaxRank,BonusPerRank,Cap,IsStretch,Notes
+Damage,0,All,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap (-1 = TBD)
+AttackSpeed,0,All,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+Health,0,All,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+Threat,0,Warrior,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+DefensePct,1,All,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+CritChance,1,Warrior|Assassin|Barbarian|Summoner|Mage,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+CritFactor,1,Warrior|Assassin|Barbarian|Summoner|Mage,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+HealthRegen,1,All,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+CooldownReduction,1,All,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+Range,1,Priest|Summoner|Mage,20,0.15,100,12,25,300,false,Spec COMBAT-HOOKS 8b: +25 units per rank cap +300 (flat arena units); maxrank 12 derived
+HealPower,1,Priest,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+SpiritDamage,1,Summoner,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+SpiritDuration,1,Summoner,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+EssencePerKill,1,PartyWide,20,0.15,100,10,10,100,false,Percent: +10 per rank cap +100 (about 10 ranks)
+EssencePerRoom,1,PartyWide,20,0.15,100,10,10,100,false,Percent: +10 per rank cap +100 (about 10 ranks)
+GoldPerKill,1,PartyWide,20,0.15,100,10,10,100,false,Percent: +10 per rank cap +100 (about 10 ranks)
+GoldPerRoom,1,PartyWide,20,0.15,100,10,10,100,false,Percent: +10 per rank cap +100 (about 10 ranks)
+Fortitude,2,Warrior|Barbarian,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+Lifesteal,2,Assassin|Barbarian,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+MultiShotChance,2,Summoner|Mage,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+MultiShotTargets,2,Summoner|Mage,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+RapidFireChance,2,Assassin,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+RapidFireDuration,2,Assassin,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+RendArmorChance,2,Warrior,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+RendArmorFactor,2,Warrior,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+Thorns,2,Warrior,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+DamagePerMeter,2,Summoner|Mage,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+HealingEcho,2,Priest,-1,-1,-1,-1,-1,30,true,Stretch; spec: echo starts at 10 percent of heal and caps at 30; other numbers TBD
+BounceShotChance,3,Mage,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+BounceShotTargets,3,Mage,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD
+DeathDefy,3,Warrior|Barbarian,-1,-1,-1,-1,-1,-1,true,Stretch; all numbers TBD

@@ -1,0 +1,25 @@
+# Unreal
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+*.sln
+*.suo
+*.VC.db
+*.opensdf
+*.sdf
+*.VC.opendb
+# Build outputs
+Build/
+*.exe
+*.obj
+*.pdb
+*.ilk
+# Local
+.claude/settings.local.json
+
+# Overnight scheduling outputs (superseded by Source/ and data/)
+overnight/
+Content/Developers/
+Content/Collections/

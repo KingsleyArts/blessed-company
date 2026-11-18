@@ -1,0 +1,13 @@
+Name,Slot,Class,Level,GoldCost,StatModifiers,Notes
+Warrior_Weapon,Weapon,Warrior,1,50,PLACEHOLDER,Stub; level 1 about 50 gold per spec; modifiers TBD
+Warrior_Armor,Armor,Warrior,1,50,PLACEHOLDER,Stub
+Priest_Weapon,Weapon,Priest,1,50,PLACEHOLDER,Stub
+Priest_Armor,Armor,Priest,1,50,PLACEHOLDER,Stub
+Assassin_Weapon,Weapon,Assassin,1,50,PLACEHOLDER,Stub
+Assassin_Armor,Armor,Assassin,1,50,PLACEHOLDER,Stub
+Barbarian_Weapon,Weapon,Barbarian,1,50,PLACEHOLDER,Stub
+Barbarian_Armor,Armor,Barbarian,1,50,PLACEHOLDER,Stub
+Summoner_Weapon,Weapon,Summoner,1,50,PLACEHOLDER,Stub
+Summoner_Armor,Armor,Summoner,1,50,PLACEHOLDER,Stub
+Mage_Weapon,Weapon,Mage,1,50,PLACEHOLDER,Stub
+Mage_Armor,Armor,Mage,1,50,PLACEHOLDER,Stub

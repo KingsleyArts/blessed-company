@@ -1,0 +1,15 @@
+Name,AbilityId,Order,EffectType,TargetSelector,Stat,Value,Duration,Notes
+Taunt_3,Taunt,0,ApplyModifier,SelfIfEnemyInRange,Taunt,1,4,PLACEHOLDER draft (director Nov 12): every enemy (also ones that spawn while it lasts) must target the Warrior for Duration seconds; like the Brute taunt does to the party; Value unused; the cast waits for an enemy in the Warrior's range
+Taunt_1,Taunt,1,AddThreat,AllEnemies,,100,0,UNUSED since the Nov 12 Taunt rework (not in the Taunt EffectIds; kept so the AddThreat mechanism stays proven in tests): value = flat threat bonus (spec: raise to current highest plus flat bonus)
+Taunt_2,Taunt,2,ApplyModifier,Self,DamageTakenReduction,0.3,4,PLACEHOLDER draft: 30% less damage taken for 4 s (spec: short damage reduction)
+GroupHeal_1,GroupHeal,0,Heal,AllAllies,,1.2,0,PLACEHOLDER draft: value = heal scale x base heal 8 (director Nov 17: lowered from 2 after the Priest plus miracles made every floor easy)
+Execute_1,Execute,0,Damage,WeakestEnemy,,3,0,PLACEHOLDER draft: value = damage scale (spec: big hit)
+Rage_1,Rage,0,ApplyModifier,SelfIfEnemyInRange,AttackSpeed,0.5,5,PLACEHOLDER draft: +50% attack speed for 5 s (spec: a few seconds)
+Rage_2,Rage,1,ApplyModifier,SelfIfEnemyInRange,Lifesteal,0.2,5,PLACEHOLDER draft: 20% lifesteal for 5 s (spec: a few seconds)
+SummonSpirit_1,SummonSpirit,0,SpawnSummon,Self,,1,10,UNUSED since the Nov 12 weapon spirit decision (the standard spirit is always present with no duration and is not cast); old draft: lasted 10 s
+Fireball_1,Fireball,0,Damage,AreaAroundTarget,,3,0,PLACEHOLDER draft: value = damage scale; area radius TBD
+GreaterSpirit_1,GreaterSpirit,0,SpawnSummon,Self,Greater,1,20,DRAFT: greater spirit base duration 20 s; Spirit Duration stat adds to it (greater only); stats of the greater spirit are CombatConfig greaterSpirit* DRAFT
+Cleave_1,Cleave,0,Damage,AreaAroundSelf,,0.5,300,PLACEHOLDER draft: Value = damage scale x Warrior Damage (small on purpose: Cleave builds threat; it is not a damage dealer); Duration column = area RADIUS in units around the Warrior (about melee reach 150 plus margin; Damage effects have no duration); threat from the normal damage rule
+Cleave_2,Cleave,1,AddThreat,AreaAroundSelf,,30,300,PLACEHOLDER draft: Taunt-style flat threat bonus (raise the Warrior to the top plus Value) on every enemy in the same radius (Duration column = radius); needed because damage threat alone cannot catch a Mage that kites an enemy out of reach
+BruteTaunt_1,BruteTaunt,0,ApplyModifier,Self,Taunt,1,3,PLACEHOLDER draft: whole party must target this enemy for 3 s (Value unused)
+ShamanHeal_1,ShamanHeal,0,Heal,Self,,0.25,0,PLACEHOLDER draft: value = heal scale x base heal 8 (2 HP per heal; was 8 hard-coded; retuned Nov 12 toward the ~20 s fight); scaled by 1.08^(floor-1) like other enemy stats; adds no threat

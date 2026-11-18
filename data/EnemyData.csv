@@ -1,0 +1,5 @@
+Name,RoleTag,BaseHP,BaseDamage,BaseAttackPerSec,BaseDefensePct,AutoActionId,AbilityId,Taunts,IsBoss,IsElite,MoveSpeed,AttackRange,PreferredDistMin,PreferredDistMax,RetreatDistance,Notes
+Grunt,Melee,110,8,1.0,0,PLACEHOLDER_GruntMelee,,false,false,false,280,150,0,150,0,HP 250 to 150 Nov 12 and 150 to 110 Nov 13 (balance pass: first run clears floor 1 and 3 Grunts take about 18 s); damage/AS/defense INVENTED placeholder
+Brute,Tank,320,6,0.6,10,PLACEHOLDER_BruteMelee,BruteTaunt,true,false,false,220,150,0,150,0,HP 450 to 320 Nov 13 (balance pass; floor 1 attrition for the Warrior+Mage first run); HP/damage/AS/defense INVENTED placeholder
+Archer,Ranged,100,3,0.6,0,PLACEHOLDER_ArcherShot,,false,false,false,240,800,600,750,450,PLACEHOLDER retune Nov 12 (was HP 200 / dmg 10 / AS 0.8) and damage 5 to 3 Nov 13 (balance pass; Archer was the main floor 1 killer of the first run); HP/damage/AS/defense INVENTED placeholder
+Shaman,Healer,180,4,0.8,0,ShamanHeal,,false,false,false,240,600,500,-1,400,HP/damage/AS INVENTED; heal amount is the ShamanHeal_1 effect (PLACEHOLDER 0.25); PreferredDistMax -1 = none (spec: at least 500 from party)

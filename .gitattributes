@@ -1,0 +1,9 @@
+# Normalize line endings for text files
+* text=auto
+
+# Shared data is hashed as raw bytes: always LF on every checkout.
+data/**/*.json text eol=lf
+spec-tests/**/*.json text eol=lf
+
+# Large binary assets go through Git LFS (the imported music: ~34 MB).
+Content/Audio/**/*.uasset filter=lfs diff=lfs merge=lfs -text
