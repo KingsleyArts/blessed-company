@@ -30,9 +30,11 @@ export interface TempleActions {
 const kCss = `
 .tp-root { position: fixed; inset: 0; z-index: 10; color: #f3ecdf; font-family: Georgia, "Times New Roman", serif;
   background: #160c26 center / cover no-repeat; display: grid; box-sizing: border-box; overflow: hidden;
-  --nav: clamp(118px, 14vw, 230px); --head: clamp(54px, 17vh, 170px); --foot: clamp(46px, 13vh, 120px);
+  --clear: 28vw; --nav: clamp(112px, 12vw, 200px); --head: clamp(54px, 17vh, 170px); --foot: clamp(46px, 13vh, 120px);
   --gold: #e8c877; --gold-dim: rgba(232, 200, 119, 0.45);
-  grid-template-columns: var(--nav) minmax(0, 1fr); grid-template-rows: var(--head) minmax(0, 1fr) var(--foot);
+  /* The first column is left empty so the priestess in the background stays in view (director, Nov 19). */
+  grid-template-columns: calc(var(--clear) - max(10px, env(safe-area-inset-left)) - clamp(8px, 1.6vw, 26px)) var(--nav) minmax(0, 1fr);
+  grid-template-rows: var(--head) minmax(0, 1fr) var(--foot);
   column-gap: clamp(8px, 1.6vw, 26px);
   padding: max(6px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
 .tp-root::before { content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -40,7 +42,7 @@ const kCss = `
     linear-gradient(180deg, rgba(18, 8, 32, 0.65), rgba(18, 8, 32, 0) 26%, rgba(18, 8, 32, 0) 72%, rgba(18, 8, 32, 0.55)); }
 .tp-root > * { position: relative; }
 .tp-root svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.tp-root button { font-family: inherit; touch-action: manipulation; }
+.tp-root button { font-family: inherit; touch-action: manipulation; -webkit-appearance: none; appearance: none; }
 
 .tp-head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-height: 0; }
 .tp-brand { display: flex; align-items: flex-start; gap: clamp(6px, 1.2vw, 18px); min-width: 0; }
@@ -58,7 +60,7 @@ const kCss = `
 .tp-pill svg { width: 1.25em; height: 1.25em; }
 .tp-pill.faith svg { color: #ffd36b; fill: #ffd36b; } .tp-pill.ess svg { color: #d9b8ff; fill: rgba(190, 150, 255, 0.55); }
 
-.tp-nav { grid-row: 2 / 4; display: flex; flex-direction: column; gap: clamp(4px, 1.1vh, 12px); padding-top: clamp(14px, 4vh, 40px);
+.tp-nav { grid-column: 2; grid-row: 2 / 4; display: flex; flex-direction: column; gap: clamp(4px, 1.1vh, 12px); padding-top: clamp(14px, 4vh, 40px);
   min-height: 0; overflow: auto; scrollbar-width: none; }
 .tp-nav::-webkit-scrollbar { display: none; }
 .tp-tab { display: flex; align-items: center; gap: 0.55em; text-align: left; font-size: clamp(12px, 2.6vh, 21px); line-height: 1.1;
@@ -71,7 +73,7 @@ const kCss = `
   box-shadow: 0 0 12px rgba(255, 220, 150, 0.45); }
 .tp-tab.on svg { color: #6b3f9a; }
 
-.tp-panel { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; min-height: 0; margin-top: clamp(16px, 4.6vh, 44px);
+.tp-panel { grid-column: 3; grid-row: 2; display: flex; flex-direction: column; min-height: 0; margin-top: clamp(16px, 4.6vh, 44px);
   background: rgba(30, 15, 46, 0.88); border: 2px solid #c9a55a; border-radius: 4px;
   box-shadow: inset 0 0 0 4px rgba(30, 15, 46, 0.9), inset 0 0 0 5px var(--gold-dim), 0 8px 30px rgba(0, 0, 0, 0.55); }
 .tp-ptitle { position: absolute; top: 0; left: clamp(8px, 1.4vw, 22px); transform: translateY(-58%); display: flex; align-items: center;
@@ -80,8 +82,9 @@ const kCss = `
   clip-path: polygon(0 0, calc(100% - 0.9em) 0, 100% 50%, calc(100% - 0.9em) 100%, 0 100%); }
 .tp-ptitle svg { width: 1.3em; height: 1.3em; margin-right: 0.35em; color: #ffd36b; fill: rgba(150, 80, 220, 0.7); }
 .tp-tools { display: flex; justify-content: flex-end; gap: 6px; padding: clamp(6px, 1.4vh, 14px) clamp(8px, 1.2vw, 18px) 0; min-height: 0; }
-.tp-amt { font-size: clamp(11px, 2.1vh, 18px); color: #f3ecdf; background: rgba(50, 28, 70, 0.9); border: 1px solid var(--gold-dim);
-  border-radius: 3px; padding: 0.2em 0.75em; cursor: pointer; }
+.tp-amt { -webkit-appearance: none; appearance: none; margin: 0; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 3.4em; height: 1.9em; line-height: 1; box-sizing: border-box; font-size: clamp(11px, 2.1vh, 18px); color: #f3ecdf;
+  background: rgba(50, 28, 70, 0.9); border: 1px solid var(--gold-dim); border-radius: 3px; padding: 0 0.6em; cursor: pointer; }
 .tp-amt.on { background: #6b4a14; border-color: var(--gold); }
 .tp-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: none; overscroll-behavior: contain;
   padding: clamp(8px, 1.8vh, 18px) clamp(8px, 1.2vw, 18px) clamp(18px, 4vh, 40px); }
@@ -92,26 +95,29 @@ const kCss = `
 .tp-arrow svg { width: 100%; height: 100%; stroke-width: 2.4; }
 .tp-arrow.show { display: block; }
 .tp-arrow.up { top: clamp(4px, 1vh, 10px); } .tp-arrow.down { bottom: clamp(2px, 0.6vh, 8px); }
-.tp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(178px, 21vw, 330px), 1fr)); gap: clamp(6px, 1.4vh, 14px) clamp(8px, 1.2vw, 18px); }
+.tp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(190px, 17vw, 300px), 1fr)); gap: clamp(6px, 1.4vh, 14px) clamp(8px, 1.2vw, 18px); }
 .tp-sub { grid-column: 1 / -1; margin: clamp(2px, 0.8vh, 8px) 0 0; font-size: clamp(11px, 2.1vh, 18px); color: #d9c9a6; letter-spacing: 0.04em;
   border-bottom: 1px solid var(--gold-dim); padding-bottom: 2px; }
-.tp-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: clamp(6px, 0.8vw, 12px);
-  align-items: center; text-align: left; color: #f3ecdf; padding: clamp(4px, 0.9vh, 9px) clamp(6px, 0.8vw, 12px) clamp(4px, 0.9vh, 9px) clamp(4px, 0.6vw, 9px);
+/* Every card is the same size (director, Nov 19): one line of name, up to three lines of detail, the rest is empty space. */
+.tp-card { box-sizing: border-box; height: 5.3em; font-size: clamp(13px, 2.3vh, 19px); display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: 1.25em minmax(0, 1fr); column-gap: 0.6em; row-gap: 0.15em; align-items: start; text-align: left; color: #f3ecdf;
+  padding: 0.45em 0.7em 0.45em 0.45em; -webkit-appearance: none; appearance: none; margin: 0;
   background: linear-gradient(180deg, rgba(64, 44, 74, 0.92), rgba(38, 24, 50, 0.95)); border: 1px solid var(--gold-dim); border-radius: 4px;
-  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.3); cursor: default; }
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.3); cursor: default; overflow: hidden; }
 .tp-card.buy { border-color: var(--gold); cursor: pointer; }
 .tp-card.buy:hover { box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.3), 0 0 10px rgba(255, 215, 130, 0.45); filter: brightness(1.12); }
-.tp-card .ic { grid-row: 1 / 3; width: clamp(30px, 7.4vh, 60px); height: clamp(30px, 7.4vh, 60px); display: flex; align-items: center; justify-content: center;
+.tp-card .ic { grid-row: 1 / 3; align-self: center; width: 3.3em; height: 3.3em; display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--gold); border-radius: 3px; color: #efe3b8; background: radial-gradient(circle at 50% 40%, #4a4a2e, #24221a 75%); }
 .tp-card .ic svg { width: 68%; height: 68%; }
-.tp-card .nm { font-size: clamp(12px, 2.5vh, 20px); line-height: 1.1; overflow-wrap: anywhere; }
-.tp-card .lv { font-size: clamp(11px, 2.2vh, 18px); color: #efe5d2; justify-self: end; white-space: nowrap; }
-.tp-card .ds { font-size: clamp(10px, 1.95vh, 16px); color: #d6cbbd; line-height: 1.15; }
-.tp-card .cost { display: flex; align-items: center; gap: 0.3em; justify-self: end; font-size: clamp(12px, 2.4vh, 20px); color: #ffe7a8; white-space: nowrap; }
+.tp-card .nm { grid-column: 2 / 4; font-size: 1em; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-card .side { grid-column: 3; grid-row: 2; align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; }
+.tp-card .lv { font-size: 0.85em; line-height: 1.2; color: #efe5d2; white-space: nowrap; }
+.tp-card .ds { font-size: 0.8em; color: #d6cbbd; line-height: 1.2; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+  overflow: hidden; }
+.tp-card .cost { display: flex; align-items: center; gap: 0.3em; font-size: 0.95em; color: #ffe7a8; white-space: nowrap; }
 .tp-card .cost svg { width: 1.05em; height: 1.05em; color: #ffd36b; fill: #ffd36b; }
 .tp-card:not(.buy) .cost { color: #a39a90; } .tp-card:not(.buy) .cost svg { color: #8d8478; fill: #8d8478; }
 .tp-card.max .cost { color: #b9f0b0; }
-.tp-card.unlock .nm { font-size: clamp(13px, 2.7vh, 22px); }
 .tp-card.hero.on { border-color: #9be39b; background: linear-gradient(180deg, rgba(48, 78, 52, 0.92), rgba(28, 48, 32, 0.95)); cursor: pointer; }
 .tp-card.hero.owned { cursor: pointer; }
 .tp-card.hero.locked { opacity: 0.75; }
@@ -128,7 +134,7 @@ const kCss = `
   border-radius: 4px; padding: 0.4em 1em; cursor: pointer; }
 .tp-danger.armed { background: #9a1a1a; border-color: #ffc0b0; }
 
-.tp-foot { grid-column: 2; grid-row: 3; display: flex; justify-content: flex-end; align-items: center; min-height: 0; }
+.tp-foot { grid-column: 3; grid-row: 3; display: flex; justify-content: flex-end; align-items: center; min-height: 0; }
 .tp-go { display: flex; align-items: center; gap: 0.45em; font-size: clamp(16px, 4.4vh, 40px); color: #2a1608; cursor: pointer;
   padding: 0.25em 1.6em; border: 2px solid #fbe3a0; background: linear-gradient(180deg, #fff4cc, #ecc672 55%, #b98a35);
   clip-path: polygon(0.7em 0, calc(100% - 0.7em) 0, 100% 50%, calc(100% - 0.7em) 100%, 0.7em 100%, 0 50%);
@@ -231,7 +237,10 @@ function itemCard(it: TempleItem, buy: (id: string) => void): HTMLButtonElement 
   const cost = el('span', 'cost');
   if (it.maxed) cost.textContent = unlock ? 'Owned' : 'MAX';
   else cost.append(icon('faith'), formatCount(it.cost));
-  b.append(ic, el('span', 'nm', it.label), el('span', 'lv', unlock ? '' : `Lv ${it.level}/${it.maxLevel}`), el('span', 'ds', it.detail), cost);
+  b.title = `${it.label}: ${it.detail}`;   // the full text when the card cuts it short
+  const side = el('span', 'side');
+  side.append(el('span', 'lv', unlock ? '' : `Lv ${it.level}/${it.maxLevel}`), cost);
+  b.append(ic, el('span', 'nm', it.label), el('span', 'ds', it.detail), side);
   if (it.canBuy) b.addEventListener('click', (ev) => { ev.stopPropagation(); buy(it.id); });
   else b.disabled = true;
   return b;
@@ -332,7 +341,7 @@ function tabBody(v: TempleView, a: TempleActions): HTMLElement {
       const ic = el('span', 'ic');
       ic.appendChild(icon('hero'));
       const status = r.active ? 'In party' : r.owned ? 'Available' : r.note;
-      b.append(ic, el('span', 'nm', r.label), el('span', 'lv', ''), el('span', 'ds', status), el('span', 'cost'));
+      b.append(ic, el('span', 'nm', r.label), el('span', 'ds', status), el('span', 'side'));
       if (r.owned) b.addEventListener('click', (ev) => { ev.stopPropagation(); a.buy(`Party:${r.className}`); });
       else b.disabled = true;
       grid.appendChild(b);

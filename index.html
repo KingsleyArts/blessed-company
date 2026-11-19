@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Blessed Company</title>
     <style>
+      /* iOS Safari enlarges text in landscape unless told not to. */
+      html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
       html, body { margin: 0; height: 100%; background: #12101a; overflow: hidden; touch-action: none; }
       #game { width: 100vw; height: 100vh; }
       #ui-root { position: fixed; inset: 0; pointer-events: none; }
