@@ -9,11 +9,15 @@
       #game { width: 100vw; height: 100vh; }
       #ui-root { position: fixed; inset: 0; pointer-events: none; }
       #ui-root > * { pointer-events: auto; }
+      #rotate { display: none; position: fixed; inset: 0; z-index: 50; background: #0b090d; color: #f4efe4; font: 600 20px system-ui, sans-serif;
+        align-items: center; justify-content: center; text-align: center; padding: 24px; }
+      @media (orientation: portrait) and (max-width: 900px) { #rotate { display: flex; } }
     </style>
   </head>
   <body>
     <div id="game"></div>
     <div id="ui-root"></div>
+    <div id="rotate">Turn your phone sideways to play.</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
