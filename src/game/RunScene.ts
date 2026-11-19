@@ -3,12 +3,13 @@
 import Phaser from 'phaser';
 import { loadCombatData } from '../core/combatData';
 import { RunChange, RunManager, makeRunManagerOptions } from '../core/runManager';
-import { formatResultLines } from '../core/uiText';
+import { amountValue, formatResultLines } from '../core/uiText';
 import { AbilityDataCsv, AbilityEffectDataCsv, ClassDataCsv, EnemyDataCsv } from '../data/generated';
 import { Overlay } from '../ui/overlay';
 import { TextPool } from './draw';
 import { Hud } from './hud';
-import { LocalMetaStore } from './localStore';
+import { LocalMetaStore, loadSettings, saveSettings, type Settings } from './localStore';
+import { Music } from './music';
 import type { Params } from './params';
 import { RoomView } from './roomView';
 import { UnitView, createGoblinAnims } from './unitView';
@@ -25,6 +26,9 @@ export class RunScene extends Phaser.Scene {
   private params!: Params;
   private store!: LocalMetaStore;
   private dprNow = 1;
+  private music!: Music;
+  private settings!: Settings;
+  private templeFromResults = false;
 
   constructor() {
     super('Run');
@@ -60,13 +64,40 @@ export class RunScene extends Phaser.Scene {
       this.hud.key(e.code);
     });
 
+    this.settings = loadSettings();
+    this.music = new Music(this, this.settings.volume);
+    this.overlay.onRerender = () => this.showTemple();
     this.rm.onChange((c) => {
       if (c === RunChange.RunStarted || c === RunChange.FloorChanged) this.room.rebuildForRun();
       if (c === RunChange.RunEnded) this.showResults();
       if (c === RunChange.RunStarted) this.overlay.hide();
+      if (c === RunChange.MetaChanged && this.overlay.kind === 'temple') this.showTemple();
     });
     (window as unknown as { bc: unknown }).bc = { rm: this.rm, hud: this.hud, scene: this };   // console access while testing
-    this.newRun();
+    // The Temple is the home screen: up when the game starts (Nov 14).
+    this.showTemple();
+  }
+
+  /** The Temple; `fromResults` gives it a Back button to the run-over card. */
+  private showTemple(fromResults = this.templeFromResults): void {
+    this.templeFromResults = fromResults;
+    const t = this.rm.getTempleSnapshot(amountValue(this.hud.ui.amountMode));
+    if (!t.valid) return;
+    this.overlay.showTemple(t, this.hud.ui.amountMode, this.music.getVolume(), {
+      buy: (id) => { this.rm.templeBuy(id, amountValue(this.hud.ui.amountMode)); },
+      amount: (m) => { this.hud.ui.amountMode = m; this.showTemple(); },
+      back: fromResults ? () => this.showResults() : undefined,
+      newRun: () => this.newRun(),
+      reset: () => {
+        this.rm.resetProgressOnly();
+        this.showTemple();
+      },
+      volume: (v) => {
+        this.music.setVolume(v);
+        this.settings.volume = v;
+        saveSettings(this.settings);
+      },
+    });
   }
 
   private applyCamera(): void {
@@ -81,6 +112,7 @@ export class RunScene extends Phaser.Scene {
 
   newRun(): void {
     this.overlay.hide();
+    this.templeFromResults = false;
     if (this.params.floor > 1 || this.params.priest) this.rm.armNextRun(this.params.floor, this.params.priest);
     this.rm.startRunWithFights(this.params.seed);
   }
@@ -89,7 +121,10 @@ export class RunScene extends Phaser.Scene {
     const r = this.rm.getRunResults();
     if (!r.valid) return;
     const lines = formatResultLines(r.causeOfDeath, r.killerName, r.floorReached, r.roomsCleared, r.kills, r.essenceEarned, r.goldEarned, r.bestFloor);
-    this.overlay.showResults(r.victory, lines, [{ label: 'New Run', primary: true, onClick: () => this.newRun() }]);
+    this.overlay.showResults(r.victory, lines, [
+      { label: 'Temple', cls: 'blue', onClick: () => this.showTemple(true) },
+      { label: 'New Run', cls: 'go', onClick: () => this.newRun() },
+    ]);
   }
 
   update(_time: number, deltaMs: number): void {
@@ -107,6 +142,9 @@ export class RunScene extends Phaser.Scene {
     if (this.room.needsRedraw()) this.room.draw(this.roomG, area);
     this.units.update(dt, this.hud.scale, false);
     this.hud.draw();
+    this.overlay.setArea(area);
+    const run = this.rm.getFlow().getRun();
+    this.music.update(this.rm.getFlow().active(), run.floorNumber);
     this.unitTexts.end();
     this.hudTexts.end();
   }

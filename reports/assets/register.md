@@ -18,6 +18,16 @@ Rows marked **DIRECTOR TO FILL** are facts only you know; nothing below was gues
 | Claude (Anthropic): Claude Code | code, tests, build and import scripts, review reports, design drafts | Agent and MCP configuration is pre-jam material and is declared, not hidden (CLAUDE.md). |
 | **DIRECTOR TO FILL** | any image, audio or text tool used for the sprite sheet, music, names or store text | |
 
+## Phaser build (Nov 19)
+
+Nothing licensed is committed to this repo. `npm run assets` (`scripts/copy-assets.ts`) copies from the Unreal reference repo into the gitignored
+`public/assets/vendor/`, and the game runs without it (cube goblins, no music).
+
+| Asset | Copied to | How | Notes |
+|---|---|---|---|
+| Goblin grunt frames (18 PNGs) | `public/assets/vendor/goblin_grunt/` | copied as-is | Source and licence still **DIRECTOR TO FILL** (row above). |
+| "Into the Depths", "No Turning Back" | `public/assets/vendor/music/*.wav` | converted by the script: mono, 22.05 kHz, 16-bit (about 7 MB each, down from 27-28 MB) | A modified copy, which the pack licence allows. A dev server or a static build serves these files to the browser, so for a public build check that this does not count as redistributing the raw files. MP3/OGG would be smaller still; no encoder is installed, and adding one as a dependency was not done. |
+
 ## Open items
 1. Fill the two **DIRECTOR TO FILL** rows (sprite sheet source and licence, other AI tools).
 2. Confirm every row's licence allows distribution inside a packaged game (the music and low-poly packs forbid redistributing the raw files, which a cooked build does not do).

@@ -55,7 +55,7 @@ export function loadSettings(): Settings {
   } catch {
     /* defaults */
   }
-  return { volume: 0.5 };
+  return { volume: 1 };   // times the Unreal base volume 0.5
 }
 
 export function saveSettings(s: Settings): void {
