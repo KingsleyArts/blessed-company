@@ -28,8 +28,9 @@ export interface TempleActions {
 }
 
 const kCss = `
+.tp-bg { position: fixed; inset: 0; z-index: 9; background: #160c26 center / cover no-repeat; pointer-events: none; }
 .tp-root { position: fixed; inset: 0; z-index: 10; color: #f3ecdf; font-family: Georgia, "Times New Roman", serif;
-  background: #160c26 center / cover no-repeat; display: grid; box-sizing: border-box; overflow: hidden;
+  background: transparent; display: grid; box-sizing: border-box; overflow: hidden;
   --clear: 28vw; --nav: clamp(112px, 12vw, 200px); --head: clamp(54px, 17vh, 170px); --foot: clamp(46px, 13vh, 120px);
   --gold: #e8c877; --gold-dim: rgba(232, 200, 119, 0.45);
   /* The first column is left empty so the priestess in the background stays in view (director, Nov 19). */
@@ -256,11 +257,19 @@ export interface BuiltTemple {
   refreshArrows: () => void;
 }
 
-/** Builds the whole Temple page. `bg` is the background image URL. */
-export function buildTemple(v: TempleView, a: TempleActions, bg: string): BuiltTemple {
+/** The Temple background on its own element. It stays in place while the page above it is rebuilt (tab, purchase), because a new
+ *  element with the image flashes its dark fallback colour for a frame on iOS before the image paints (director, Nov 19). */
+export function buildTempleBackdrop(bg: string): HTMLElement {
+  ensureStyle();
+  const back = el('div', 'tp-bg');
+  back.style.backgroundImage = `url("${bg}")`;
+  return back;
+}
+
+/** Builds the Temple page (everything above the background; see buildTempleBackdrop). */
+export function buildTemple(v: TempleView, a: TempleActions): BuiltTemple {
   ensureStyle();
   const root = el('div', 'tp-root');
-  root.style.backgroundImage = `url("${bg}")`;
 
   // Title and currencies.
   const head = el('div', 'tp-head');

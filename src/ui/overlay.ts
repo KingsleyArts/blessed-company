@@ -3,7 +3,7 @@
 // Everything is built with DOM calls, never innerHTML with game text.
 import type { TempleSnapshot } from '../core/runManager';
 import type { ResultLine } from '../core/uiText';
-import { buildTemple, type TempleTab, type TempleView } from './temple';
+import { buildTemple, buildTempleBackdrop, type TempleTab, type TempleView } from './temple';
 
 const kCss = `
 .bc-dim { position: fixed; background: rgba(0,0,0,0.74); display: flex; align-items: center; justify-content: center;
@@ -92,6 +92,12 @@ export class Overlay {
     this.current?.remove();
     this.current = undefined;
     this.kind = 'none';
+    this.dropBackdrop();
+  }
+
+  private dropBackdrop(): void {
+    this.backdrop?.remove();
+    this.backdrop = undefined;
   }
 
   private show(node: HTMLElement, kind: 'results' | 'temple'): void {
@@ -99,6 +105,7 @@ export class Overlay {
     const sel = '.bc-panel';
     const scroll = kind === this.kind ? this.current?.querySelector(sel)?.scrollTop ?? 0 : 0;
     this.current?.remove();
+    if (kind !== 'temple') this.dropBackdrop();
     this.current = node;
     this.kind = kind;
     this.place(node);
@@ -153,7 +160,11 @@ export class Overlay {
         this.resetTimer = window.setTimeout(() => { if (this.kind === 'temple') this.onRerender?.(); }, 4050);
         this.onRerender?.();
       },
-    }, `${import.meta.env.BASE_URL}assets/ui/temple_bg.webp`);
+    });
+    if (!this.backdrop) {
+      this.backdrop = buildTempleBackdrop(`${import.meta.env.BASE_URL}assets/ui/temple_bg.webp`);
+      this.root.appendChild(this.backdrop);
+    }
     this.current?.remove();
     this.current = built.root;
     this.kind = 'temple';
@@ -167,6 +178,8 @@ export class Overlay {
   private templeTab: TempleTab = 'blessings';
   private shownTab: TempleTab | undefined;
   private templeScroller: HTMLElement | undefined;
+  /** The Temple background, kept across redraws so it never flashes. */
+  private backdrop: HTMLElement | undefined;
 
   /** Set by the scene: draws the Temple again (after the reset button arms or disarms). */
   onRerender: (() => void) | undefined;
