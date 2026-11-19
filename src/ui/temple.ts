@@ -81,7 +81,8 @@ const kCss = `
   padding: 0.12em 1.4em 0.12em 0.4em; background: linear-gradient(180deg, #33194c, #1d0e30); border: 1.5px solid var(--gold);
   clip-path: polygon(0 0, calc(100% - 0.9em) 0, 100% 50%, calc(100% - 0.9em) 100%, 0 100%); }
 .tp-ptitle svg { width: 1.3em; height: 1.3em; margin-right: 0.35em; color: #ffd36b; fill: rgba(150, 80, 220, 0.7); }
-.tp-tools { display: flex; justify-content: flex-end; gap: 6px; padding: clamp(6px, 1.4vh, 14px) clamp(8px, 1.2vw, 18px) 0; min-height: 0; }
+/* flex: none: if the bar shrinks, the scroll list below overlaps its buttons and takes their taps (Nov 19). */
+.tp-tools { display: flex; flex: none; justify-content: flex-end; gap: 6px; padding: clamp(6px, 1.4vh, 14px) clamp(8px, 1.2vw, 18px) 0; }
 .tp-amt { -webkit-appearance: none; appearance: none; margin: 0; display: inline-flex; align-items: center; justify-content: center;
   min-width: 3.4em; height: 1.9em; line-height: 1; box-sizing: border-box; font-size: clamp(11px, 2.1vh, 18px); color: #f3ecdf;
   background: rgba(50, 28, 70, 0.9); border: 1px solid var(--gold-dim); border-radius: 3px; padding: 0 0.6em; cursor: pointer; }
@@ -89,6 +90,8 @@ const kCss = `
 .tp-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: none; overscroll-behavior: contain;
   padding: clamp(8px, 1.8vh, 18px) clamp(8px, 1.2vw, 18px) clamp(18px, 4vh, 40px); }
 .tp-scroll::-webkit-scrollbar { display: none; }
+/* Tabs with no amount bar: start the content below the title ribbon, which hangs into the panel. */
+.tp-ptitle + .tp-scroll { padding-top: clamp(16px, 3.6vh, 36px); }
 .tp-arrow { position: absolute; left: 50%; transform: translateX(-50%); width: clamp(26px, 5vh, 48px); height: clamp(20px, 4vh, 38px);
   padding: 2px 6px; border: 1px solid var(--gold-dim); border-radius: 999px; background: rgba(24, 11, 38, 0.92); color: var(--gold);
   cursor: pointer; display: none; z-index: 2; box-shadow: 0 0 8px rgba(0, 0, 0, 0.7); box-sizing: content-box; }

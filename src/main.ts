@@ -35,3 +35,10 @@ const resize = (): void => {
 };
 window.addEventListener('resize', resize);
 window.visualViewport?.addEventListener('resize', resize);
+// If iOS scrolls the page anyway (rotation, toolbar changes), put it back: a scrolled page offsets taps from what is drawn.
+const unscroll = (): void => {
+  if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+  game.scale.updateBounds();
+};
+window.addEventListener('scroll', unscroll, { passive: true });
+window.visualViewport?.addEventListener('scroll', unscroll);
