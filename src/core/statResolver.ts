@@ -82,6 +82,16 @@ export class StatResolver {
   private dirty: boolean[] = new Array<boolean>(kStatCount).fill(true);
   private recomputes = 0;
 
+  /** A value copy (the C++ resolver is copied by assignment, e.g. to preview one more rank). */
+  clone(): StatResolver {
+    const r = new StatResolver();
+    r.base = this.base.slice();
+    r.limits = this.limits.map((l) => ({ ...l }));
+    r.mods = this.mods.map((m) => ({ ...m }));
+    r.nextId = this.nextId;
+    return r;
+  }
+
   setBase(stat: StatId, value: number): void {
     this.base[stat] = value;
     this.dirty[stat] = true;
