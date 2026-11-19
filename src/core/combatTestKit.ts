@@ -50,6 +50,18 @@ export function StepRunning(s: CombatSim, n: number): void {
 }
 /** Ticks(s, seconds): llround(seconds / dt). */
 export const Ticks = (s: CombatSim, seconds: number): number => llround(seconds / s.config().dt);
+/** Dummy: a data enemy turned into a harmless stationary punching bag (Damage 0, given HP, no movement). */
+export function Dummy(s: CombatSim, enemyName: string, x: number, y: number, hp = 100000): UnitId {
+  const id = s.addEnemy(enemyName, 1);
+  const u = s.mutableUnit(id)!;
+  u.stats.setBase(StatId.Health, hp);
+  u.stats.setBase(StatId.Damage, 0);
+  u.hp = hp;
+  u.moveSpeed = 0;
+  u.x = x;
+  u.y = y;
+  return id;
+}
 /** Tough(s, id): +1e6 flat Health so a test can run long without the fight ending. */
 export function Tough(s: CombatSim, id: UnitId): void {
   const u = s.mutableUnit(id)!;
