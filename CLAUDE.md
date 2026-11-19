@@ -98,9 +98,14 @@ Run from the repo root (Node 20+).
 ```
 npm install
 npm run dev     # CSV -> TS, then Vite dev server (http://localhost:5173)
-npm test        # CSV -> TS, then Vitest
+npm test        # CSV -> TS, then the full Vitest suite (about 2 min: floor-rule sweeps at the C++ seed counts)
+npm run test:fast  # everything except the floor-rule sweeps (seconds); golden parity still runs
 npm run build   # CSV -> TS, typecheck, static bundle in dist/
 npm run lint
 npm run soak    # headless soak bot (Stage 3)
 ```
 The Unreal build commands and native C++ tests live in the reference repo `C:/dev/tower-of-the-lost` (read-only).
+
+### Golden fixtures (rules parity with the Unreal build)
+`spec-tests/core/*.json` come from the real C++ `Core/` in `C:\dev\tower-of-the-lost` (read-only). Regenerate after a deliberate, director-approved rule change:
+`powershell -File tools\golden\build_golden.ps1` (needs VS 2022). `src/core/goldenFloor.ts` and `tools/golden/dump_golden.cpp` share the canonical floor format; change both together.

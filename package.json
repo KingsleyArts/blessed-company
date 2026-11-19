@@ -8,6 +8,7 @@
     "dev": "npm run data && vite",
     "build": "npm run data && tsc --noEmit && vite build",
     "test": "npm run data && vitest run",
+    "test:fast": "npm run data && vitest run --exclude src/core/floorGenerator.test.ts",
     "lint": "eslint src scripts",
     "format": "prettier --write src scripts",
     "soak": "tsx scripts/soak.ts"
