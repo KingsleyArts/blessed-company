@@ -20,7 +20,7 @@ import { kMetaMaxGold, makeMeta, resetProgress, type MetaSave } from './metaSave
 import { activeParty, kActiveSlots, rosterPriestClass, toggleActiveHero } from './roster';
 import { RunBot } from './runBot';
 import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, type FightSpec, type RunResults } from './runFlow';
-import { exitRoomRevive } from './runSim';
+import { exitRoomRevive, partyHpFraction } from './runSim';
 import {
   GearSlot, buyGear, buyStatRanks, buyStatUnlock, defaultTempleConfig, gearNextCost, gearTempleLevel, kGearSlotCount, partyLuckBonus,
   statNextCost, statTempleLevel, statUnlocked,
@@ -241,7 +241,7 @@ export class AutoRunSession {
       this.bot.spendEssence = true;
       if (this.bot.spend(this.flow) > 0) this.pushEssenceToSim();
     }
-    const hp = this.sim ? partyHpFractionOf(this.sim) : 1.0;
+    const hp = this.sim ? partyHpFraction(this.sim) : 1.0;
     const choice = this.bot.choose(this.flow, hp);
     if (choice.teleport) {
       this.doTeleport();
@@ -275,17 +275,6 @@ export class AutoRunSession {
     if (this.params.temple) rec.temple = botVisitTemple(this.meta);
     this.records.push(rec);
   }
-}
-
-function partyHpFractionOf(sim: CombatSim): number {
-  let hp = 0;
-  let mx = 0;
-  for (const u of sim.getUnits()) {
-    if (u.enemy || u.summon || u.removed) continue;
-    if (u.alive) hp += u.hp;
-    mx += sim.maxHp(u);
-  }
-  return mx > 0 ? hp / mx : 0;
 }
 
 // ------------------------------------------------------------------------------------------ the Temple bot

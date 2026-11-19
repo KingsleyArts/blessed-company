@@ -102,7 +102,8 @@ npm test        # CSV -> TS, then the full Vitest suite (about 2 min: floor-rule
 npm run test:fast  # everything except the floor-rule sweeps (seconds); golden parity still runs
 npm run build   # CSV -> TS, typecheck, static bundle in dist/
 npm run lint
-npm run soak    # headless soak bot (Stage 3)
+npm run soak -- --runs 40 --mult 1.3   # headless tol.AutoRun soak (fresh save); add --nobuy, --temple, --cast-times 0, --seed N, --quiet, --json <file>
+npm run test:fast  # also skips autoRun.parity.test.ts (the 3164-run Unreal soak, ~35 s); npm test runs it
 npm run fight -- --seed 7 --party Warrior,Priest,Mage --enemies Grunt,Grunt,Brute --floor 2 --cast-times   # one headless fight, prints the log
 ```
 The Unreal build commands and native C++ tests live in the reference repo `C:/dev/tower-of-the-lost` (read-only).

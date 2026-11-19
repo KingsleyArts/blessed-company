@@ -5,6 +5,7 @@ import { describe, it } from 'vitest';
 import { CHECK, NEAR, data as g_data } from './combatTestKit';
 import { CombatSim, FightState } from './combatSim';
 import { LogKind } from './combatSupport';
+import { lround } from './cstd';
 import { shippedEssenceConfig } from './essenceConfig';
 import { EssenceSidebar, kBuyMax } from './essenceSidebar';
 import { DamageTag, kNoUnit, type UnitId } from './eventBus';
@@ -34,7 +35,6 @@ import {
 
 const SLOW = 600_000;
 const eqArr = <T>(a: readonly T[], b: readonly T[]): boolean => a.length === b.length && a.every((v, i) => v === b[i]);
-const lround = (v: number): number => (v < 0 ? -Math.round(-v) : Math.round(v));
 
 // ------------------------------------------------------------------------------------------ helpers
 const CountEnemies = (s: FightSpec): number => s.enemies.length + s.waveEnemies.length;
