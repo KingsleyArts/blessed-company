@@ -9,6 +9,28 @@ import type { UnitId } from './eventBus';
 
 export const data: CombatData = loadCombatData(ClassDataCsv, EnemyDataCsv, AbilityDataCsv, AbilityEffectDataCsv)!;
 
+/**
+ * The unit suites' ReadFile pins (Barbarian, Priest, ...): the shipped data holds a deliberately weak placeholder Priest,
+ * so those suites pin the design values (Attack/sec 0.8, Group Heal 1.2). First occurrence only, like std::string::replace.
+ * Today data/*.csv already holds 0.8 and 1.2, so both pins find nothing and pinnedData equals data (same as in C++).
+ */
+const pinFirst = (text: string, from: string, to: string): string => {
+  const p = text.indexOf(from);
+  return p < 0 ? text : text.slice(0, p) + to + text.slice(p + from.length);
+};
+export const pinnedClassCsv = pinFirst(ClassDataCsv, 'Priest,Healer,100,3,0.12,', 'Priest,Healer,100,3,0.8,');
+export const pinnedEffectCsv = pinFirst(AbilityEffectDataCsv, 'GroupHeal_1,GroupHeal,0,Heal,AllAllies,,0.5,', 'GroupHeal_1,GroupHeal,0,Heal,AllAllies,,1.2,');
+export const pinnedData: CombatData = loadCombatData(pinnedClassCsv, EnemyDataCsv, AbilityDataCsv, pinnedEffectCsv)!;
+
+/** StubRow(name, hp, dmg): a melee enemy row that lives only in a test's data copy. */
+export function StubRow(name: string, hp: number, dmg: number): EnemyDataRow {
+  return {
+    Name: name, RoleTag: 'Melee', BaseStats: { HP: Math.fround(hp), Damage: Math.fround(dmg), AttackPerSec: 1, DefensePct: 0 },
+    AutoActionId: '', AbilityId: '', Taunts: false, IsBoss: false, IsElite: false,
+    MoveSpeed: 280, AttackRange: 150, PreferredDistMin: 0, PreferredDistMax: 150, RetreatDistance: 0,
+  };
+}
+
 /** `CombatData d = g_data;` — a deep copy a test may edit. */
 export function cloneData(src: CombatData = data): CombatData {
   const d = new CombatData();
