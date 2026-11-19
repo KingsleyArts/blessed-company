@@ -5,6 +5,7 @@ import { loadCombatData } from '../core/combatData';
 import { RunChange, RunManager, makeRunManagerOptions } from '../core/runManager';
 import { amountValue, formatResultLines } from '../core/uiText';
 import { AbilityDataCsv, AbilityEffectDataCsv, ClassDataCsv, EnemyDataCsv } from '../data/generated';
+import { Rect } from '../ui/hudLayout';
 import { Overlay } from '../ui/overlay';
 import { TextPool } from './draw';
 import { Hud } from './hud';
@@ -132,8 +133,13 @@ export class RunScene extends Phaser.Scene {
     this.unitTexts.begin();
     this.hudTexts.begin();
     this.hud.overlayOpen = this.overlay.isOpen();
+    this.hud.preRun = this.overlay.kind === 'temple' && !this.rm.getFlow().active();
     this.hud.update(dt, w, h);
     const area = this.hud.layout.roomArea;
+    // Pre-run the side panels are hidden, so the Temple takes the whole width below the top bar.
+    const tb = this.hud.layout.topBar;
+    const m = area.x;   // the room view's side margin
+    const overlayArea = this.hud.preRun ? new Rect(m, tb.bottom() + 2 * m, w - 2 * m, h - tb.bottom() - 4 * m) : area;
     this.room.fit(area, w, h);
     this.room.syncToRun();
     this.room.update(dt);
@@ -141,7 +147,7 @@ export class RunScene extends Phaser.Scene {
     if (this.room.needsRedraw()) this.room.draw(this.roomG, area);
     this.units.update(dt, this.hud.scale, false);
     this.hud.draw();
-    this.overlay.setArea(area);
+    this.overlay.setArea(overlayArea);
     const run = this.rm.getFlow().getRun();
     this.music.update(this.rm.getFlow().active(), run.floorNumber);
     this.unitTexts.end();

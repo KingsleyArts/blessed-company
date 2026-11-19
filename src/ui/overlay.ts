@@ -163,7 +163,7 @@ export class Overlay {
     this.show(dim, 'results');
   }
 
-  /** The Temple (DrawTempleOverlay): Faith, the three columns of purchases, the party picker, the amount selector, New Run.
+  /** The Temple (DrawTempleOverlay): the three columns of purchases, the party picker, the amount selector, New Run.
    *  Back only when it was opened over a run-over card. Reset progress needs a second click within 4 s. */
   showTemple(t: TempleSnapshot, amountMode: number, volume: number, h: TempleHandlers): void {
     const dim = el('div', 'bc-dim');
@@ -172,7 +172,7 @@ export class Overlay {
     const head = el('div', 'bc-temple-head');
     head.appendChild(el('span', 't', 'Temple'));
     const right = el('span', 'right');
-    right.appendChild(el('span', 'f', `Faith: ${formatCount(t.essence)}`));
+    // Faith shows in the top bar only (director, Nov 19).
     right.appendChild(button('New Run', h.newRun, 'bc-btn go small'));
     head.appendChild(right);
     panel.appendChild(head);
