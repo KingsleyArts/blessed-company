@@ -55,7 +55,7 @@ export class Hud {
   private resetArmedLeft = 0;
   /** Set while a DOM overlay (results card, Temple) covers the room: the HUD skips the room-area hit boxes. */
   overlayOpen = false;
-  /** Set while the Temple is up with no run in progress: the HUD draws the top bar's currencies only. */
+  /** Set while the Temple is up with no run in progress: the HUD draws nothing (the Temple page covers the screen). */
   preRun = false;
   layout!: Layout;
   scale = 1;
@@ -103,9 +103,9 @@ export class Hud {
     this.hits = [];
     const L = this.layout;
     const S = this.scale;
-    this.drawTopBar(L, S);
-    // The pre-run Temple shows the top bar's currencies only (director, Nov 19): no floor label, buttons, gauge, mini-map or Essence menu.
+    // The pre-run Temple is a full-screen page with its own currencies (director, Nov 19): the HUD draws nothing under it.
     if (this.preRun) return;
+    this.drawTopBar(L, S);
     this.drawButtons(L, S);
     this.drawMinimap(L, S);
     this.drawEssence(L, S);
@@ -208,16 +208,14 @@ export class Hud {
     box(g, new Rect(0, L.topBar.bottom() - Math.max(2, 2 * S), L.topBar.w, Math.max(2, 2 * S)), kGold);
     const pad = 0.012 * L.topBar.w;
     const run = this.rm.getFlow().getRun();
-    if (!this.preRun) {
-      this.texts.at('tb.floor', run.active ? `Floor ${run.floorNumber}` : 'Floor -', pad, L.topBar.y + 0.08 * L.topBar.h, kBaseFontPx * 1.8 * S, kTextLight);
-      let roomText = '-';
-      const cur = this.currentRoom();
-      if (this.snap.runActive && cur) {
-        roomText = roomLabel(cur.type, cur.rescue, this.snap.boss);
-        if (this.inCrystalRoom()) roomText += ' - crystal';
-      }
-      this.texts.at('tb.room', roomText, pad, L.topBar.y + 0.6 * L.topBar.h, kBaseFontPx * 1.15 * S, kTextDim);
+    this.texts.at('tb.floor', run.active ? `Floor ${run.floorNumber}` : 'Floor -', pad, L.topBar.y + 0.08 * L.topBar.h, kBaseFontPx * 1.8 * S, kTextLight);
+    let roomText = '-';
+    const cur = this.currentRoom();
+    if (this.snap.runActive && cur) {
+      roomText = roomLabel(cur.type, cur.rescue, this.snap.boss);
+      if (this.inCrystalRoom()) roomText += ' - crystal';
     }
+    this.texts.at('tb.room', roomText, pad, L.topBar.y + 0.6 * L.topBar.h, kBaseFontPx * 1.15 * S, kTextDim);
     const pill = (key: string, right: number, label: string, value: number, icon: number): number => {
       const text = `${label} ${formatCount(value)}`;
       const ph = 0.62 * L.topBar.h;
@@ -231,8 +229,7 @@ export class Hud {
       t.setPosition(r.x + ph + 6 * S, r.y + ph / 2);
       return r.x;
     };
-    // Pre-run, the pills sit further in so a phone's rounded corner does not clip them (director, Nov 19).
-    let edge = L.topBar.w - (this.preRun ? Math.max(pad, 0.04 * L.topBar.w) : pad);
+    let edge = L.topBar.w - pad;
     edge = pill('tb.ess', edge, 'Essence', this.snap.runActive ? this.snap.essence : run.essence, lin(0.95, 0.75, 0.2)) - 12 * S;
     pill('tb.faith', edge, 'Faith', this.rm.getMeta().gold, lin(0.45, 0.7, 1));
   }
