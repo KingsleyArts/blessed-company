@@ -1,5 +1,6 @@
 // CombatSupport.h port: the combat log ring buffer. (CombatRng lives in rng.ts.)
 import { kNoUnit, type UnitId } from './eventBus';
+import { fmtF } from './printf';
 
 export enum LogKind { FightStart, FightEnd, Spawn, Attack, Damage, Heal, Ability, Death, Kill, Enrage, Note }
 
@@ -45,7 +46,7 @@ export class CombatLog {
   }
   /** "[ 12.34s t00370] text" (matches the C++ "%6.2f" / "%05d" format). */
   static formatLine(e: LogEntry): string {
-    return `[${e.time.toFixed(2).padStart(6)}s t${String(e.tick).padStart(5, '0')}] ${e.text}`;
+    return `[${fmtF(e.time, 2).padStart(6)}s t${String(e.tick).padStart(5, '0')}] ${e.text}`;
   }
   toText(): string {
     return this.entries.map((e) => CombatLog.formatLine(e) + '\n').join('');

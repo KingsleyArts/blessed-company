@@ -103,9 +103,14 @@ npm run test:fast  # everything except the floor-rule sweeps (seconds); golden p
 npm run build   # CSV -> TS, typecheck, static bundle in dist/
 npm run lint
 npm run soak    # headless soak bot (Stage 3)
+npm run fight -- --seed 7 --party Warrior,Priest,Mage --enemies Grunt,Grunt,Brute --floor 2 --cast-times   # one headless fight, prints the log
 ```
 The Unreal build commands and native C++ tests live in the reference repo `C:/dev/tower-of-the-lost` (read-only).
 
 ### Golden fixtures (rules parity with the Unreal build)
 `spec-tests/core/*.json` come from the real C++ `Core/` in `C:\dev\tower-of-the-lost` (read-only). Regenerate after a deliberate, director-approved rule change:
 `powershell -File tools\golden\build_golden.ps1` (needs VS 2022). `src/core/goldenFloor.ts` and `tools/golden/dump_golden.cpp` share the canonical floor format; change both together.
+
+`spec-tests/combat/*.json` (102 combat scenarios, hashed logs and unit state) come from the C++ `CombatSim.h`:
+`powershell -NoProfile -File tools\golden\build_combat_golden.ps1`. `src/core/combatScenario.ts` mirrors `Run()` in `tools/golden/dump_combat.cpp`; change both together.
+Positions use `src/core/fmath.ts` `hypot` (`sqrt(x*x+y*y)`, what MSVC x64 `std::hypot` returns); never `Math.hypot` in `src/core`, or parity breaks.
