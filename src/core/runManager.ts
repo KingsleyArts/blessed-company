@@ -46,6 +46,7 @@ export interface MetaStore {
 
 export class MemoryMetaStore implements MetaStore {
   text: string | undefined;
+  keepCorrupt?: (text: string) => void;
   load(): string | undefined { return this.text; }
   save(text: string): void { this.text = text; }
 }
@@ -462,21 +463,19 @@ export class RunManager {
 
   moveDirection(dir: Dir): boolean {
     if (!this.canMoveManually()) return false;
-    const floorNo = this.flow.getRun().floorNumber;
     const from = this.flow.currentNode();
     const entry = this.flow.moveDirection(dir);
     if (entry.kind === EntryKind.Rejected) return false;
-    this.enterRoomWalking(entry, this.flow.currentNode(), floorNo, from, [this.flow.currentNode()]);
+    this.enterRoomWalking(entry, from, [this.flow.currentNode()]);
     return true;
   }
 
   moveToRoom(room: number): boolean {
     if (!this.canMoveManually()) return false;
-    const floorNo = this.flow.getRun().floorNumber;
     const from = this.flow.currentNode();
     const r = this.flow.moveToRoom(room);
     if (!r.accepted || r.walked.length === 0) return false;
-    this.enterRoomWalking(r.last, this.flow.currentNode(), floorNo, from, [...r.walked]);
+    this.enterRoomWalking(r.last, from, [...r.walked]);
     return true;
   }
 
@@ -531,19 +530,19 @@ export class RunManager {
     // Nov 14: the Auto button never spends Gold (buying upgrades stays the player's input); only the soak bot does.
     const choice = this.bot.choose(this.flow, this.sim ? partyHpFraction(this.sim) : 1.0);
     if (choice.teleport) {
-      this.doTeleport();
-      return false;
+      // Unreal returns false here and waits for the new floor's start-room fight to schedule the next step. A start room with an
+      // empty pack has no fight, so Unreal's Auto stalled there; keep stepping when no fight is pending (fix noted in the Stage 4 report).
+      return this.doTeleport() && this.flow.active() && !this.flow.fightPending();
     }
     if (choice.node < 0) {
       this.flow.abandon();
       this.finishRun();
       return false;
     }
-    const floorNo = this.flow.getRun().floorNumber;
     const from = this.flow.currentNode();
     const entry = this.flow.travel(choice.node);
     if (entry.kind === EntryKind.Rejected) return false;
-    this.enterRoomWalking(entry, choice.node, floorNo, from, [choice.node]);
+    this.enterRoomWalking(entry, from, [choice.node]);
     return entry.kind !== EntryKind.Fight;
   }
 
@@ -554,9 +553,9 @@ export class RunManager {
     this.hook?.cancel();
   }
 
-  private enterRoomWalking(entry: RoomEntry, node: number, floorNo: number, fromNode: number, path: number[]): void {
+  private enterRoomWalking(entry: RoomEntry, fromNode: number, path: number[]): void {
     if (path.length === 0 || entry.kind === EntryKind.Rejected) {
-      this.handleEntry(entry, node, floorNo);
+      this.handleEntry(entry);
       return;
     }
     const f = this.flow.currentFloor();
@@ -566,7 +565,7 @@ export class RunManager {
       let dir = -1;
       if (from >= 0 && from < f.nodes.length) for (let d = 0; d < 4; ++d) if (f.nodes[from].door[d] === to) { dir = d; break; }
       if (dir < 0) {
-        this.handleEntry(entry, node, floorNo);
+        this.handleEntry(entry);
         return;
       }
       steps.push({ dir: dir as Dir, fromNode: from, toNode: to });
@@ -575,7 +574,7 @@ export class RunManager {
     // The party came in through the door opposite to the way it walked: that is where it rallies.
     this.setPartyEntry((steps[steps.length - 1].dir + 2) % 4);
     if (!this.hook) {
-      this.handleEntry(entry, node, floorNo);
+      this.handleEntry(entry);
       return;
     }
     const id = ++this.transitionSerial;
@@ -585,7 +584,7 @@ export class RunManager {
       if (id !== this.transitionSerial) return;
       this.transitioning = false;
       if (!this.flow.active()) return;
-      this.handleEntry(entry, node, floorNo);
+      this.handleEntry(entry);
     });
     // The room's enemies already stand in it while the party walks over (the fight starts when the walk ends).
     if (this.transitioning && id === this.transitionSerial && entry.kind === EntryKind.Fight) this.stageNextFight();
@@ -645,10 +644,9 @@ export class RunManager {
     return true;
   }
 
-  private handleEntry(entry: RoomEntry, node: number, _floorNo: number): void {
+  private handleEntry(entry: RoomEntry): void {
     this.syncMeta();
     if (entry.kind === EntryKind.Rejected) return;
-    void node;
     this.notify(RunChange.RoomChanged);
     this.notify(RunChange.MapChanged);
     switch (entry.kind) {

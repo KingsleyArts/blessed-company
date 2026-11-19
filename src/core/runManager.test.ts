@@ -105,6 +105,25 @@ describe('RunManager (live)', () => {
     }
   });
 
+  it('auto keeps going after a teleport into a start room with no fight (seeds 7 and 99 stalled before)', () => {
+    for (const seed of [7, 99]) {
+      const rm = new RunManager(data, new MemoryMetaStore());
+      const hook = new DelayHook(1);
+      rm.setTransitionHook(hook);
+      rm.startRunWithFights(seed);
+      rm.setCombatSpeed(10);
+      rm.setAuto(true);
+      let floor2 = false;
+      for (let t = 0; t < 4000 && rm.getFlow().active(); t += 1 / 30) {
+        hook.advance(1 / 30);
+        rm.tick(1 / 30);
+        if (rm.getFlow().getRun().floorNumber >= 2) floor2 = true;
+      }
+      expect(floor2).toBe(true);
+      expect(rm.getFlow().active()).toBe(false);   // the run reached its end instead of idling on floor 2
+    }
+  });
+
   it('temple purchases and the party picker are saved and survive a reload', () => {
     const store = new MemoryMetaStore();
     const rm = new RunManager(data, store);
