@@ -16,7 +16,7 @@ export function defaultClassRow(): ClassDataRow {
 }
 
 /** std::stof semantics: parses the numeric prefix, throws (here: NaN) when there is none. */
-function stof(cell: string): number {
+export function stof(cell: string): number {
   const m = /^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?/.exec(cell);
   return m ? f32(parseFloat(m[0])) : Number.NaN;
 }
