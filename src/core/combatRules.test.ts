@@ -1,7 +1,8 @@
-// Port of tests/combat/tests.cpp, part 2 (shared-core pass, setters, Cleave, Taunt rework, rally and placement).
+﻿// Port of tests/combat/tests.cpp, part 2 (shared-core pass, setters, Cleave, Taunt rework, rally and placement).
 import { describe, it } from 'vitest';
 import { CombatSim, FightState, defaultCombatConfig, runFightHeadless } from './combatSim';
 import { DamageTag, kNoUnit } from './eventBus';
+import { hypot } from './fmath';
 import { ModSource, StatId } from './statResolver';
 import {
   CHECK, Cls, EffectDuration, EffectValue, Enemy, Freeze, NEAR, Place, StepTicks, cloneData, data,
@@ -335,10 +336,10 @@ describe('combat: Warrior Taunt rework', () => {
     CHECK(s.forceCastAbility(w));
     const W = s.getUnit(w)!;
     const gu = s.getUnit(g)!;
-    const d0 = Math.hypot(gu.x - W.x, gu.y - W.y);
+    const d0 = hypot(gu.x - W.x, gu.y - W.y);
     StepTicks(s, 30);
     CHECK(gu.target === w);
-    CHECK(Math.hypot(gu.x - W.x, gu.y - W.y) < d0 - 1);
+    CHECK(hypot(gu.x - W.x, gu.y - W.y) < d0 - 1);
     CHECK(Math.abs(gu.x - 800) <= Enemy('Grunt').MoveSpeed * 1.05);
     NEAR(W.hp, s.maxHp(W), 1e-9);
   });
