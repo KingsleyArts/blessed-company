@@ -2,7 +2,7 @@
 // buttons and the Miracle Gauge, the mini-map with fog, the arrow pad and Teleport, the Essence menu, the portrait strip, the gear toast
 // and (paused, testing builds) the tuning menu. Every rectangle comes from hudLayout.ts; clicks hit-test the same rectangles.
 import Phaser from 'phaser';
-import { FightState, type CombatSim, type Unit } from '../core/combatSim';
+import type { CombatSim, Unit } from '../core/combatSim';
 import { RoomType } from '../core/floorGenerator';
 import { MiracleKind, MiracleResult, miracleName, miracleTargetsEnemy } from '../core/miracleGauge';
 import type { FloorSnapshot, RunManager, SidebarSnapshot } from '../core/runManager';
@@ -83,7 +83,7 @@ export class Hud {
     this.resetArmedLeft = Math.max(0, this.resetArmedLeft - dt);
     this.flashAge += dt;
     this.refreshSidebar(dt);
-    if (this.armed !== undefined && this.sim()?.getState() !== FightState.Running) this.armed = undefined;
+    if (this.armed !== undefined && !this.rm.miracleReady(this.armed)) this.armed = undefined;
     // The HUD owns the combat speed (0 while paused) and holds the Auto bot while paused.
     this.rm.setCombatSpeed(this.ui.effectiveSpeed());
     this.rm.setPaused(this.ui.paused);
@@ -256,11 +256,10 @@ export class Hud {
     });
     // Miracles and the gauge.
     const sim = this.sim();
-    const live = !!sim && sim.getState() === FightState.Running;
     const gv = sim ? sim.getGauge().value() : 0;
     const gc = sim ? sim.getGauge().capacity() : 100;
     const miracle = (r: Rect, name: string, kind: MiracleKind, accent: number): void => {
-      const can = live && sim!.getGauge().canAfford(kind);
+      const can = this.rm.miracleReady(kind);
       const armed = this.armed === kind;
       this.frame(r, armed ? lin(0.3, 0.26, 0.05) : can ? lin(0.1, 0.09, 0.2) : lin(0.05, 0.04, 0.06), 0.95, can && hov(r), armed);
       this.texts.centered(`b.m${kind}`, `${name} ${sim ? Math.trunc(sim.getGauge().cost(kind)) : 0}`, r, kBaseFontPx * 1.25 * S, can ? accent : lin(0.45, 0.45, 0.45));
@@ -287,8 +286,7 @@ export class Hud {
       this.armed = undefined;   // pressing the armed miracle again cancels it
       return;
     }
-    const sim = this.sim();
-    if (!sim || sim.getState() !== FightState.Running || !sim.getGauge().canAfford(kind)) {
+    if (!this.rm.miracleReady(kind)) {
       this.armed = undefined;
       return;
     }
