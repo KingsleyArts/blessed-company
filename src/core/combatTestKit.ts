@@ -2,7 +2,8 @@
 import { expect } from 'vitest';
 import { AbilityDataCsv, AbilityEffectDataCsv, ClassDataCsv, EnemyDataCsv } from '../data/generated';
 import { CombatData, loadCombatData } from './combatData';
-import type { CombatSim } from './combatSim';
+import { FightState, type CombatSim } from './combatSim';
+import { ModKind, ModSource, StatId } from './statResolver';
 import type { ClassDataRow, EnemyDataRow } from './dataTypes';
 import type { UnitId } from './eventBus';
 
@@ -39,6 +40,22 @@ export function Place(s: CombatSim, id: UnitId, x: number, y: number): void {
 }
 export function Freeze(s: CombatSim, id: UnitId): void { s.mutableUnit(id)!.moveSpeed = 0; }
 export function StepTicks(s: CombatSim, n: number): void { for (let i = 0; i < n; i++) s.step(); }
+/** std::llround (half away from zero). */
+export const llround = (v: number): number => (v < 0 ? -Math.round(-v) : Math.round(v));
+/** StepSeconds(s, sec): llround(sec / dt) ticks. */
+export function StepSeconds(s: CombatSim, sec: number): void { StepTicks(s, llround(sec / s.config().dt)); }
+/** The unit suites' StepN: steps n ticks but stops once the fight is over. */
+export function StepRunning(s: CombatSim, n: number): void {
+  for (let i = 0; i < n && s.getState() === FightState.Running; i++) s.step();
+}
+/** Ticks(s, seconds): llround(seconds / dt). */
+export const Ticks = (s: CombatSim, seconds: number): number => llround(seconds / s.config().dt);
+/** Tough(s, id): +1e6 flat Health so a test can run long without the fight ending. */
+export function Tough(s: CombatSim, id: UnitId): void {
+  const u = s.mutableUnit(id)!;
+  u.stats.addModifier(StatId.Health, ModKind.Flat, 1.0e6, ModSource.GoldUpgrade);
+  u.hp = s.maxHp(u);
+}
 export const dist = (s: CombatSim, a: UnitId, b: UnitId): number => {
   const ua = s.getUnit(a)!;
   const ub = s.getUnit(b)!;
