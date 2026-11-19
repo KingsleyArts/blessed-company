@@ -55,10 +55,9 @@ export class RunScene extends Phaser.Scene {
     this.scale.on('resize', () => this.applyCamera());
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.hud.pointerMove(p.worldX, p.worldY));
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (this.overlay.isOpen()) return;
-      this.hud.pointerDown(p.worldX, p.worldY);
-    });
+    // A run-over card or the Temple covers the room view only (the DOM takes those clicks), so the HUD around it still works, as in
+    // Unreal where the card's blocker hit box covers the room area only.
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.hud.pointerDown(p.worldX, p.worldY));
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
       if (e.repeat) return;
       this.hud.key(e.code);

@@ -6,6 +6,7 @@
   "scripts": {
     "data": "tsx scripts/csv-to-ts.ts",
     "dev": "npm run data && vite",
+    "dev:lan": "npm run data && vite --host",
     "build": "npm run data && tsc --noEmit && vite build",
     "test": "npm run data && vitest run",
     "test:fast": "npm run data && vitest run --exclude src/core/floorGenerator.test.ts --exclude src/core/autoRun.parity.test.ts",
