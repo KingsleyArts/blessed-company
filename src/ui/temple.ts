@@ -162,20 +162,19 @@ const kCss = `
 .tp-root.wide { --foot: clamp(62px, 21vh, 190px); grid-template-columns: 0px var(--nav) minmax(0, 1fr); }
 .tp-root.wide .tp-nav { grid-row: 2; }
 @media (prefers-reduced-motion: reduce) { .tp-root { transition: none; } }
-.hr-wrap { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: clamp(8px, 1.4vw, 22px);
+.hr-wrap { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.15fr) minmax(0, 1fr); gap: clamp(8px, 1.4vw, 22px);
   align-items: start; font-size: clamp(12px, 2.3vh, 19px); }
 .hr-box { background: linear-gradient(180deg, rgba(64, 44, 74, 0.7), rgba(30, 18, 42, 0.85)); border: 1px solid var(--gold-dim);
   border-radius: 4px; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.3); }
 /* The art frame fills the panel's visible height (and stays in view while the other columns scroll). */
 .tp-scroll.heroes { container-type: size; }
-.hr-art { position: sticky; top: 0; height: max(140px, calc(100cqh - clamp(16px, 3.6vh, 36px) - clamp(18px, 4vh, 40px))); display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  overflow: hidden; background: radial-gradient(ellipse at 50% 38%, rgba(255, 226, 160, 0.28), rgba(40, 20, 60, 0.2) 62%),
-  linear-gradient(180deg, rgba(64, 44, 74, 0.7), rgba(30, 18, 42, 0.85)); }
-.hr-art .fig { position: absolute; left: 0; right: 0; bottom: 5%; margin: auto; height: 90%; width: 100%; object-fit: contain;
-  object-position: 50% 100%; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55)); pointer-events: none; user-select: none; }
-.hr-art.locked .fig { filter: grayscale(0.85) brightness(0.6) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55)); }
-.hr-art .ped { width: 78%; height: 12%; margin-bottom: 7%; border-radius: 50%; background: radial-gradient(ellipse, #6f5a8a, #2b1c3c 70%);
-  border: 1px solid var(--gold-dim); }
+.hr-art { position: sticky; top: 0; height: max(140px, calc(100cqh - clamp(16px, 3.6vh, 36px) - clamp(18px, 4vh, 40px))); overflow: hidden;
+  background: radial-gradient(ellipse at 45% 30%, rgba(190, 140, 255, 0.22), rgba(40, 20, 60, 0) 65%); }
+/* The large illustration from the character sheet, as in the mockup: no frame, head kept in view, the bottom fading into the panel. */
+.hr-art .fig { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0;
+  -webkit-mask-image: linear-gradient(180deg, #000 78%, transparent); mask-image: linear-gradient(180deg, #000 78%, transparent);
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)); pointer-events: none; user-select: none; }
+.hr-art.locked .fig { filter: grayscale(0.85) brightness(0.6); }
 .hr-tok { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border-radius: 50%; color: #fff8e6;
   font-weight: 700; border: 2px solid #f1d58c; box-shadow: 0 0 10px rgba(0, 0, 0, 0.6), inset 0 -0.15em 0.3em rgba(0, 0, 0, 0.35);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); line-height: 1; }
@@ -213,19 +212,25 @@ const kCss = `
 .pt-words { min-width: 0; flex: 0 1 auto; }
 .pt-words h3 { margin: 0; font-size: 1.25em; font-style: italic; font-weight: 400; color: #fbf3df; white-space: nowrap; }
 .pt-words p { margin: 0.1em 0 0; color: #d6cbbd; font-size: 0.85em; }
-.pt-slots { display: flex; gap: clamp(6px, 1vw, 16px); align-self: stretch; align-items: center; flex: none; }
-.pt-slot { position: relative; height: 92%; max-height: 8em; aspect-ratio: 1; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; border: 1px dashed var(--gold-dim); background: radial-gradient(ellipse at 50% 70%, rgba(111, 90, 138, 0.6), rgba(30, 18, 42, 0.4) 70%); }
-.pt-slot .hr-tok { width: 84%; font-size: 1.4em; }
-.pt-slot .n { position: absolute; left: -0.2em; top: -0.1em; font-size: 0.8em; color: #2a1608; background: #ecc672; border-radius: 50%;
-  width: 1.4em; height: 1.4em; display: flex; align-items: center; justify-content: center; }
-.pt-slot .plus { color: var(--gold-dim); font-size: 1.6em; }
+/* Fixed sizes, no aspect-ratio with a % height: iOS Safari collapsed those slots and the buttons slid under them (director, Nov 20). */
+.pt-slots { display: flex; gap: clamp(4px, 0.8vw, 14px); align-items: center; flex: none; }
+.pt-slot { --h: clamp(50px, 18vh, 150px); position: relative; flex: none; width: calc(var(--h) * 1.3); height: var(--h); box-sizing: border-box;
+  margin: 0; padding: 0; border: 0; background: none; cursor: pointer; }
+.pt-slot .ring { position: absolute; left: 8%; right: 8%; bottom: 4%; height: 28%; border-radius: 50%; border: 2px solid rgba(190, 120, 255, 0.85);
+  background: radial-gradient(ellipse, rgba(170, 90, 255, 0.55), rgba(60, 20, 100, 0.2) 70%); box-shadow: 0 0 10px rgba(170, 90, 255, 0.6); }
+.pt-slot.empty .ring { border: 1px dashed var(--gold-dim); background: rgba(30, 18, 42, 0.5); box-shadow: none; }
+/* The chibi pixel sprites: drawn with hard pixels, feet on the ring. */
+.pt-slot .spr { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%); image-rendering: pixelated; pointer-events: none; }
+.pt-slot .n { position: absolute; left: 50%; bottom: -0.35em; transform: translateX(-50%); font-size: 0.8em; color: #2a1608; background: #ecc672;
+  border: 1px solid #fbe3a0; border-radius: 50%; width: 1.4em; height: 1.4em; display: flex; align-items: center; justify-content: center; }
+.pt-slot .plus { position: absolute; left: 0; right: 0; top: 18%; text-align: center; color: var(--gold-dim); font-size: 1.6em; }
 .pt-btn { font-size: 0.95em; padding: 0.35em 0.9em; cursor: pointer; color: #f3ecdf; background: rgba(60, 36, 84, 0.95); border: 1px solid var(--gold);
   border-radius: 3px; white-space: nowrap; }
 .pt-btns { display: flex; flex-direction: column; gap: 0.3em; flex: none; }
 .tp-party .tp-go { margin-left: auto; font-size: clamp(14px, 3.4vh, 32px); flex: none; }
 .tp-go:disabled { filter: grayscale(0.85) brightness(0.7); cursor: default; }
-@media (max-width: 760px) { .hr-wrap { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); } .hr-art { display: none; } .pt-words p { display: none; } }
+@media (max-width: 900px) { .pt-words p { display: none; } }
+@media (max-width: 700px) { .hr-wrap { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); } .hr-art { display: none; } }
 @media (max-height: 480px) { .tp-brand p { max-width: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
 @media (max-width: 640px) { .tp-cur { flex-direction: column; align-items: flex-end; gap: 4px; } }
 `;
@@ -422,7 +427,11 @@ function goButton(a: TempleActions, enabled: boolean): HTMLButtonElement {
 
 /** The director's character art (Nov 19), cut from the character sheets: a face for the round portraits and the front view for the
  *  large frame. The tint shows while an image loads. */
-const heroArt = (cls: string, part: 'face' | 'full'): string => `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_${part}.webp`;
+const heroArt = (cls: string, part: 'face' | 'art'): string => `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_${part}.webp`;
+const heroSprite = (cls: string): string => `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_sprite.png`;
+/** Sprite heights in pixels (all drawn at one scale, 72 = a full slot). Assassin and Barbarian are stand-ins from their turnarounds until
+ *  chibi sprites exist for them. */
+const kSpriteH: Record<string, number> = { Warrior: 63, Mage: 65, Priest: 69, Assassin: 72, Barbarian: 72, Summoner: 64 };
 
 const kHeroTint: Record<string, string> = {
   Warrior: '#b8443c', Mage: '#4a62c9', Assassin: '#3f9a5c', Priest: '#c9ad3e', Barbarian: '#c0702e', Summoner: '#8a4fc0',
@@ -445,12 +454,12 @@ function heroesBody(v: TempleView, a: TempleActions): HTMLElement {
   if (!h) return wrap;
   const inParty = v.party.includes(h.className);
 
-  const art = el('div', 'hr-box hr-art');
+  const art = el('div', 'hr-art');
   const fig = el('img', 'fig');
-  fig.src = heroArt(h.className, 'full');
+  fig.src = heroArt(h.className, 'art');
   fig.alt = h.label;
   fig.draggable = false;
-  art.append(el('div', 'ped'), fig);
+  art.append(fig);
   if (!h.owned) art.classList.add('locked');
 
   const card = el('div', 'hr-box hr-card');
@@ -505,8 +514,16 @@ function partyBar(v: TempleView, a: TempleActions): HTMLElement {
   for (let i = 0; i < 3; ++i) {
     const cls = v.party[i];
     const h = cls === undefined ? undefined : v.heroes.find((x) => x.className === cls);
-    const s = h ? btn('pt-slot', () => a.pickHero(h.className), token(h)) : el('div', 'pt-slot');
-    if (!h) s.appendChild(el('span', 'plus', '+'));
+    const s = h ? btn('pt-slot', () => a.pickHero(h.className)) : el('div', 'pt-slot empty');
+    s.appendChild(el('span', 'ring'));
+    if (h) {
+      const spr = el('img', 'spr');
+      spr.src = heroSprite(h.className);
+      spr.alt = '';
+      spr.draggable = false;
+      spr.style.height = `${((kSpriteH[h.className] ?? 72) / 72) * 100}%`;
+      s.appendChild(spr);
+    } else s.appendChild(el('span', 'plus', '+'));
     s.appendChild(el('span', 'n', String(i + 1)));
     if (h) s.setAttribute('aria-label', `Slot ${i + 1}: ${h.label}`);
     slots.appendChild(s);
