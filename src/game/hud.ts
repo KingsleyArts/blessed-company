@@ -13,13 +13,15 @@ import {
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, kBarFill, kBaseFontPx, kGold, kGoldDim, kPanelFill, kTextDim, kTextLight, lin, outline } from './draw';
 import { roomHaze, type RoomView } from './roomView';
+import { readability } from './combatText';
 import { spriteSizes } from './heroMotion';
 import { loadTuning, saveTuning } from './localStore';
 import { spriteTuning, type UnitView } from './unitView';
 
 export interface HudOptions { testing: boolean }
 
-/** A tuning row. `id` is what the saved values are keyed by, so keep ids stable; `tab`: 0 party and miracles, 1 enemies, 2 sprites. */
+/** A tuning row. `id` is what the saved values are keyed by, so keep ids stable; `tab`: 0 party and miracles, 1 enemies, 2 sprites and
+ *  room, 3 readability. */
 interface TuneDef { id: string; name: string; step: number; min: number; max: number; tab: number }
 const kTune: TuneDef[] = [
   { id: 'enemyMult', name: 'Enemy health and damage x', step: 0.1, min: 0.3, max: 4, tab: 1 },
@@ -37,8 +39,13 @@ const kTune: TuneDef[] = [
   })),
   { id: 'hazeDepth', name: 'Room haze depth (share of view)', step: 0.02, min: 0, max: 0.5, tab: 2 },
   { id: 'hazeAlpha', name: 'Room haze darkness at edge', step: 0.05, min: 0, max: 1, tab: 2 },
+  // Readability switches (director, Nov 20: pile-ups): 1 on, 0 off; shown as On / Off.
+  { id: 'show:merge', name: 'Merge combat numbers (one total per unit, heals to the side)', step: 1, min: 0, max: 1, tab: 3 },
+  { id: 'show:bars', name: 'Fewer health bars (enemies just hit, heroes when low; thinner)', step: 1, min: 0, max: 1, tab: 3 },
+  { id: 'show:rings', name: 'Rings under feet (gold party, red enemies)', step: 1, min: 0, max: 1, tab: 3 },
 ];
-const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites and room'];
+const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites and room', 'Readability'];
+const tuneRow = (id: string): number => kTune.findIndex((d) => d.id === id);
 
 type Hit = { rect: Rect; action: () => void; prio: number };
 
@@ -315,7 +322,7 @@ export class Hud {
     const r = this.rm.castMiracle(kind, unitId);
     if (r.result === MiracleResult.Cast) {
       this.armed = undefined;
-      this.units.addEntry(r.on, kind === MiracleKind.DivineHealing ? 'Divine Healing' : 'Divine Shield',
+      this.units.addLabel(r.on, kind === MiracleKind.DivineHealing ? 'Divine Healing' : 'Divine Shield',
         kind === MiracleKind.DivineShield ? lin(0.55, 0.85, 1) : lin(1, 0.9, 0.4), 1.5);
     }
   }
@@ -325,7 +332,7 @@ export class Hud {
     if (r.result === MiracleResult.Cast) {
       this.armed = undefined;
       this.units.smiteFlash = { x, y, age: 0 };
-      for (const id of r.hit) this.units.addEntry(id, 'SMITE', lin(1, 0.9, 0.4), 1.5);
+      for (const id of r.hit) this.units.addLabel(id, 'SMITE', lin(1, 0.9, 0.4), 1.5);
     }
   }
 
@@ -629,8 +636,11 @@ export class Hud {
     spriteSizes.enemy = this.tuneValue[8];
     spriteSizes.party = this.tuneValue[9];
     kTune.forEach((d, i) => { if (d.id.startsWith('size:')) spriteSizes.unit[d.id.slice(5)] = this.tuneValue[i]; });
-    roomHaze.depth = this.tuneValue[kTune.findIndex((d) => d.id === 'hazeDepth')];
-    roomHaze.alpha = this.tuneValue[kTune.findIndex((d) => d.id === 'hazeAlpha')];
+    roomHaze.depth = this.tuneValue[tuneRow('hazeDepth')];
+    roomHaze.alpha = this.tuneValue[tuneRow('hazeAlpha')];
+    readability.mergeNumbers = this.tuneValue[tuneRow('show:merge')] > 0.5;
+    readability.fewerBars = this.tuneValue[tuneRow('show:bars')] > 0.5;
+    readability.footRings = this.tuneValue[tuneRow('show:rings')] > 0.5;
     this.room.redraw();
     const sim = this.sim();
     if (!sim) return;
@@ -767,7 +777,7 @@ ${text}`);
       this.texts.fit(`tu.l${i}`, d.name, label, kBaseFontPx * 1.1 * S, kTextLight);
       this.frame(minus, lin(0.07, 0.05, 0.07), 0.95, minus.contains(this.mouse.x, this.mouse.y), false);
       this.texts.centered(`tu.m${i}`, '-', minus, kBaseFontPx * 1.4 * S, kTextLight);
-      this.texts.centered(`tu.v${i}`, i === 5 ? this.tuneValue[i].toFixed(0) : this.tuneValue[i].toFixed(2), value, kBaseFontPx * 1.2 * S, lin(0.6, 1, 0.7));
+      this.texts.centered(`tu.v${i}`, d.id.startsWith('show:') ? (this.tuneValue[i] > 0.5 ? 'On' : 'Off') : i === 5 ? this.tuneValue[i].toFixed(0) : this.tuneValue[i].toFixed(2), value, kBaseFontPx * 1.2 * S, lin(0.6, 1, 0.7));
       this.frame(plus, lin(0.07, 0.05, 0.07), 0.95, plus.contains(this.mouse.x, this.mouse.y), false);
       this.texts.centered(`tu.p${i}`, '+', plus, kBaseFontPx * 1.4 * S, kTextLight);
       this.hit(minus, 3, () => this.tuneClick(`${i}:-`));
@@ -777,8 +787,8 @@ ${text}`);
     const aw = (panel.w - 2 * pad - pad) / 3;
     const copy = this.copiedLeft > 0 ? 'Copied (also in the console)' : 'Copy changed values';
     const labels = [['Fill miracle gauge', 'Heal party to full', 'Reset tuning'], ['Kill all enemies', 'Heal enemies to full', 'Reset tuning'],
-      [copy, 'Kill all enemies', 'Reset tuning']][this.tuneTab];
-    const boxes = [['Fill', 'Heal', 'Reset'], ['KillAll', 'HealFoes', 'Reset'], ['Copy', 'KillAll', 'Reset']][this.tuneTab];
+      [copy, 'Kill all enemies', 'Reset tuning'], [copy, 'Kill all enemies', 'Reset tuning']][this.tuneTab];
+    const boxes = [['Fill', 'Heal', 'Reset'], ['KillAll', 'HealFoes', 'Reset'], ['Copy', 'KillAll', 'Reset'], ['Copy', 'KillAll', 'Reset']][this.tuneTab];
     for (let k = 0; k < 3; ++k) {
       const r = new Rect(panel.x + pad + k * (aw + pad * 0.5), y, aw, rowH * 1.1);
       this.frame(r, lin(0.1, 0.09, 0.2), 0.95, r.contains(this.mouse.x, this.mouse.y), false);

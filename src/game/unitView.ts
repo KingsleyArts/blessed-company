@@ -7,6 +7,7 @@ import type { RunManager } from '../core/runManager';
 import { StatId } from '../core/statResolver';
 import { formatAmount } from '../core/uiText';
 import { fillFraction, floatAnimAt, jitter } from '../ui/hudLayout';
+import { barVisible, kHealOffsetPx, kHealSize, pushFloat, readability, type FloatEntry, type FloatKind } from './combatText';
 import { TextPool, classColor, lin } from './draw';
 import { enemyTextureKey, heroPose, heroTextureKey, kEnemySpriteNames, kHeroMotion, kSpriteFacesLeft, newHeroFx, spriteSizes, unitSpriteSize, type HeroFx } from './heroMotion';
 import type { RoomView } from './roomView';
@@ -18,7 +19,6 @@ const kWalkHoldSeconds = 0.15;
 /** Testing-only tuning values (the pause menu in Unreal): hurt frame time, hurt cooldown, sprite size (uu per frame pixel). */
 export const spriteTuning = { hurtSeconds: 0.3, hurtCooldown: 1.0, scale: 1.15 };
 
-const kMaxEntries = 48;
 const kLifeSeconds = 1.0;
 const kRisePx = 56;
 const kJitterPx = 14;
@@ -50,7 +50,6 @@ interface Visual {
   seen: boolean;
 }
 
-interface FloatEntry { x: number; y: number; text: string; color: number; age: number; jitter: number; size: number }
 
 export class UnitView {
   private visuals = new Map<string, Visual>();
@@ -60,6 +59,8 @@ export class UnitView {
   private overlay: Phaser.GameObjects.Graphics;
   /** Recent hits, lunges and casts per sprite unit id (reset with each new fight's sim). */
   private fx = new Map<number, HeroFx>();
+  /** The clock time each unit was last damaged (fewer health bars). */
+  private lastHit = new Map<number, number>();
   private clock = 0;
   private readonly reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
   smiteFlash: { x: number; y: number; age: number } = { x: 0, y: 0, age: 99 };
@@ -129,25 +130,39 @@ export class UnitView {
     sim.getBus().subscribe('AbilityCast', (ev) => { const f = heroFx(ev.caster); if (f) f.cast = 0; });
     sim.getBus().subscribe('UnitDied', (ev) => { const f = heroFx(ev.unit); if (f) f.ko = 0; });
     sim.getBus().subscribe('DamageDealt', (ev) => {
-      const text = formatAmount(ev.amount, false, ev.crit);
-      if (text === '') return;
+      if (ev.amount > 0) this.lastHit.set(ev.target, this.clock);
       const t = sim.getUnit(ev.target);
       let color = t && !t.enemy ? lin(1, 0.35, 0.3) : lin(1, 1, 1);
       if (ev.crit) color = lin(1, 0.9, 0.1);
-      this.addEntry(ev.target, text, color, ev.crit ? 1.5 : 1);
+      this.addEntry(ev.target, ev.crit ? 'crit' : 'damage', ev.amount, color, ev.crit ? 1.5 : 1);
     });
     sim.getBus().subscribe('HealApplied', (ev) => {
-      const text = formatAmount(ev.effectiveAmount, true, false);
-      if (text !== '') this.addEntry(ev.target, text, lin(0.3, 1, 0.4), 1);
+      this.addEntry(ev.target, 'heal', ev.effectiveAmount, lin(0.3, 1, 0.4), 1);
     });
   }
 
-  addEntry(unitId: number, text: string, color: number, size: number): void {
+  /** A word floating over a unit (a miracle's name). */
+  addLabel(unitId: number, text: string, color: number, size: number): void {
     const u = this.rm.getSim()?.getUnit(unitId);
     if (!u) return;
-    if (this.entries.length >= kMaxEntries) this.entries.shift();
     const p = this.worldPos(u);
-    this.entries.push({ x: p.x, y: p.y, text, color, age: 0, jitter: jitter(this.jitterCounter++, kJitterPx), size });
+    pushFloat(this.entries, { unit: unitId, kind: 'label', amount: 0, x: p.x, y: p.y, text, color, age: 0, jitter: jitter(this.jitterCounter++, kJitterPx), size, dx: 0 },
+      readability.mergeNumbers, () => text);
+  }
+
+  private addEntry(unitId: number, kind: FloatKind, amount: number, color: number, size: number): void {
+    const u = this.rm.getSim()?.getUnit(unitId);
+    if (!u) return;
+    const merge = readability.mergeNumbers;
+    // Small hits that round to nothing still add into a merged number, so they are only dropped when they would show alone.
+    const text = formatAmount(amount, kind === 'heal', kind === 'crit');
+    if (text === '' && !merge) return;
+    const p = this.worldPos(u);
+    const heal = merge && kind === 'heal';
+    pushFloat(this.entries, {
+      unit: unitId, kind, amount, x: p.x, y: p.y, text, color, age: 0, jitter: jitter(this.jitterCounter++, kJitterPx),
+      size: heal ? size * kHealSize : size, dx: heal ? kHealOffsetPx : 0,
+    }, merge, (a, k) => formatAmount(a, k === 'heal', k === 'crit'));
   }
 
   update(dt: number, scale: number, hideOverlays: boolean): void {
@@ -173,6 +188,7 @@ export class UnitView {
     }
     for (const e of this.entries) e.age += dt;
     this.entries = this.entries.filter((e) => e.age < kLifeSeconds);
+    if (!sim) this.lastHit.clear();
     this.smiteFlash.age += dt;
     if (!hideOverlays && sim) this.drawOverlays(sim, scale);
   }
@@ -212,6 +228,13 @@ export class UnitView {
     v.gfx.setDepth(depth);
     const g = v.gfx;
     g.clear();
+    if (readability.footRings && u.alive) {
+      // A ring on the floor in the unit's side colour: gold for the party and its summons, red for enemies (the floor under a pile-up
+      // stays visible when the sprites overlap).
+      const rx = 50 * kBodyXY * pxPerUu * 1.25;
+      g.fillStyle(u.enemy ? lin(0.85, 0.15, 0.1) : lin(1, 0.8, 0.25), 0.22).fillEllipse(foot.x, foot.y, rx * 2, rx * 0.72);
+      g.lineStyle(Math.max(1.5, rx * 0.09), u.enemy ? lin(1, 0.25, 0.15) : lin(1, 0.85, 0.3), 0.9).strokeEllipse(foot.x, foot.y, rx * 2, rx * 0.72);
+    }
     if (v.sprite) {
       let anim = 'Idle';
       if (!u.alive) anim = 'Dead';
@@ -297,16 +320,18 @@ export class UnitView {
 
   private drawOverlays(sim: CombatSim, scale: number): void {
     const g = this.overlay;
-    const barW = kBarWidthPx * scale;
-    const barH = kBarHeightPx * scale;
+    // Fewer bars also draws them smaller.
+    const thin = readability.fewerBars;
+    const barW = kBarWidthPx * scale * (thin ? 0.75 : 1);
+    const barH = kBarHeightPx * scale * (thin ? 0.6 : 1);
     const border = Math.max(1, Math.round(scale));
     for (const u of sim.getUnits()) {
       if (u.removed || !u.alive || !this.rm.unitShown(u)) continue;
       const p = this.worldPos(u);
       const s = this.room.project(p.x, p.y, 100);
       if (s.depth <= 0) continue;
-      // Health bar: only on a damaged unit (Nov 14).
-      if (u.hp < sim.maxHp(u)) {
+      // Health bar: only on a damaged unit (Nov 14); with fewer bars, an enemy hit in the last few seconds or a hero low on health.
+      if (barVisible(u.enemy, fillFraction(u.hp, sim.maxHp(u)), this.clock - (this.lastHit.get(u.id) ?? -99), thin)) {
         const left = s.x - barW / 2;
         const top = s.y - kBarLiftPx * scale;
         const f = fillFraction(u.hp, sim.maxHp(u));
@@ -359,8 +384,10 @@ export class UnitView {
       if (s.depth <= 0) return;
       const px = kTextScaleBase * 18 * scale * e.size * a.scale;
       const y = s.y - (kBarLiftPx + 10) * scale - a.rise;
-      this.texts.at(`fl${i}s`, e.text, s.x + e.jitter * scale + 1.5 * scale, y + 1.5 * scale, px, 0x000000, 0.5, 1, a.alpha * 0.9, true);
-      this.texts.at(`fl${i}`, e.text, s.x + e.jitter * scale, y, px, e.color, 0.5, 1, a.alpha, true);
+      if (e.text === '') return;
+      const x = s.x + (e.jitter + e.dx) * scale;
+      this.texts.at(`fl${i}s`, e.text, x + 1.5 * scale, y + 1.5 * scale, px, 0x000000, 0.5, 1, a.alpha * 0.9, true);
+      this.texts.at(`fl${i}`, e.text, x, y, px, e.color, 0.5, 1, a.alpha, true);
     });
   }
 }
