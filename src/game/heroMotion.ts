@@ -19,8 +19,10 @@ export const kHeroMotion = {
   victoryHopUu: 22, victoryHz: 1.6,
 };
 
-/** Testing-only: the party sprite size multiplier from the pause menu's tuning panel (1 = kHeroMotion.uuPerPx). */
-export const heroTuning = { scale: 1 };
+/** Testing-only sprite sizes from the pause menu's tuning panel (Sprites tab): an overall multiplier for the party and for enemies, and
+ *  one per unit name. 1 everywhere = the shipped sizes. Saved with the other tuning values until the director locks them in. */
+export const spriteSizes = { party: 1, enemy: 1, unit: {} as Record<string, number> };
+export const unitSpriteSize = (name: string): number => spriteSizes.unit[name] ?? 1;
 
 /** What happened to one hero recently, as clocks counting up since each event (99 = long ago). */
 export interface HeroFx {
@@ -83,9 +85,13 @@ export function heroPose(s: HeroState, fx: HeroFx, m = kHeroMotion): HeroPose {
   return { dx, lift, scaleY: weak && !s.won ? 0.9 : 1, angle: 0, tint, flash: fx.flash < m.flashSeconds, alpha: 1 };
 }
 
+/** Enemies drawn as one still pixel sprite (director's art, Nov 20). The Grunt keeps its animated sprite set. The art faces right. */
+export const kEnemySpriteNames = ['Archer', 'Brute', 'Shaman'] as const;
+export const enemyTextureKey = (name: string): string => `enemy_${name}`;
+
 /** The heroes that have a combat sprite (the ones a player can have today; Barbarian and Summoner keep the sphere). */
 export const kHeroSpriteClasses = ['Warrior', 'Mage', 'Assassin', 'Priest'] as const;
 export const heroTextureKey = (cls: string): string => `hero_${cls}`;
-/** Which way the chibi art faces as drawn. It faces right (director, Nov 20: with `true` the heroes attacked with their backs turned),
+/** Which way the chibi art (heroes and the still enemies) faces as drawn. It faces right (director, Nov 20: with `true` the heroes attacked with their backs turned),
  *  so it is mirrored only when the hero looks left. */
 export const kSpriteFacesLeft = false;

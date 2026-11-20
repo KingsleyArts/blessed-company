@@ -8,7 +8,7 @@ import { StatId } from '../core/statResolver';
 import { formatAmount } from '../core/uiText';
 import { fillFraction, floatAnimAt, jitter } from '../ui/hudLayout';
 import { TextPool, classColor, lin } from './draw';
-import { heroPose, heroTextureKey, heroTuning, kHeroMotion, kSpriteFacesLeft, newHeroFx, type HeroFx } from './heroMotion';
+import { enemyTextureKey, heroPose, heroTextureKey, kEnemySpriteNames, kHeroMotion, kSpriteFacesLeft, newHeroFx, spriteSizes, unitSpriteSize, type HeroFx } from './heroMotion';
 import type { RoomView } from './roomView';
 
 const kBodyXY = 1.7;
@@ -38,7 +38,7 @@ const kAnimFps: Record<string, number> = { Idle: 2.5, Walk: 8, Attack: 6, Hurt: 
 interface Visual {
   gfx: Phaser.GameObjects.Graphics;
   sprite?: Phaser.GameObjects.Sprite;
-  /** A hero's chibi sprite (moved by heroMotion); without one the hero is a sphere. */
+  /** A hero's chibi sprite or a still enemy sprite (moved by heroMotion); without one the unit is a sphere or cube. */
   hero?: Phaser.GameObjects.Image;
   hurtClock: number;
   moveClock: number;
@@ -58,7 +58,7 @@ export class UnitView {
   private jitterCounter = 0;
   private subscribedSim: CombatSim | undefined;
   private overlay: Phaser.GameObjects.Graphics;
-  /** Recent hits, lunges and casts per hero unit id (reset with each new fight's sim). */
+  /** Recent hits, lunges and casts per sprite unit id (reset with each new fight's sim). */
   private fx = new Map<number, HeroFx>();
   private clock = 0;
   private readonly reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
@@ -73,6 +73,13 @@ export class UnitView {
 
   private keyOf(u: Unit): string {
     return !u.enemy && !u.summon ? `P:${u.name}` : `E:${this.rm.fightSerial}:${u.id}`;
+  }
+
+  /** The unit is drawn as one still sprite moved in code: a hero with a chibi, or Archer / Brute / Shaman. */
+  private hasStill(u: Unit): boolean {
+    if (u.summon) return false;
+    return this.scene.textures.exists(u.enemy ? enemyTextureKey(u.name) : heroTextureKey(u.name))
+      && (!u.enemy || (kEnemySpriteNames as readonly string[]).includes(u.name));
   }
 
   /** Where the unit stands now (the room view walks the party between rooms; staged enemies stand in the next room). */
@@ -96,7 +103,7 @@ export class UnitView {
     this.fx.clear();
     const heroFx = (id: number): HeroFx | undefined => {
       const u = sim.getUnit(id);
-      if (!u || u.enemy || u.summon) return undefined;
+      if (!u || !this.hasStill(u)) return undefined;
       let f = this.fx.get(id);
       if (!f) this.fx.set(id, (f = newHeroFx()));
       return f;
@@ -178,7 +185,7 @@ export class UnitView {
     if (!v) {
       v = { gfx: this.scene.add.graphics(), hurtClock: 99, moveClock: 99, lastX: u.x, lastY: u.y, lastHp: u.hp, faceRight: !u.enemy, anim: '', seen: true };
       if (sprite) v.sprite = this.scene.add.sprite(0, 0, 'gob_13_Idle_R_1').setOrigin(0.5, 1);
-      if (party && this.scene.textures.exists(heroTextureKey(u.name))) v.hero = this.scene.add.image(0, 0, heroTextureKey(u.name)).setOrigin(0.5, 1);
+      if (this.hasStill(u)) v.hero = this.scene.add.image(0, 0, u.enemy ? enemyTextureKey(u.name) : heroTextureKey(u.name)).setOrigin(0.5, 1);
       this.visuals.set(key, v);
     }
     v.seen = true;
@@ -216,7 +223,7 @@ export class UnitView {
         v.anim = full;
         v.sprite.play(`gob_${full}`);
       }
-      v.sprite.setPosition(foot.x, foot.y).setScale(spriteTuning.scale * pxPerUu).setDepth(depth);
+      v.sprite.setPosition(foot.x, foot.y).setScale(spriteTuning.scale * spriteSizes.enemy * unitSpriteSize(u.name) * pxPerUu).setDepth(depth);
       return;
     }
     if (v.hero) {
@@ -260,19 +267,19 @@ export class UnitView {
     g.fillPoints([corner(-r, -r, hUu), corner(r, -r, hUu), corner(r, r, hUu), corner(-r, r, hUu)], true);
   }
 
-  /** A hero as its chibi sprite, moved by heroMotion: bob, hop, lunge, flash, knock-back, cast glow, weak pulse, lying down when out. */
+  /** A hero (chibi) or a still enemy sprite, moved by heroMotion: bob, hop, lunge, flash, knock-back, cast glow, weak pulse, lying down when out. */
   private drawHero(sim: CombatSim, u: Unit, v: Visual, img: Phaser.GameObjects.Image, p: { x: number; y: number }, fill: number,
     pxPerUu: number, depth: number): void {
     const fx = this.fx.get(u.id) ?? newHeroFx();
     if (!u.alive && !this.fx.has(u.id)) fx.ko = 99;   // already down when first seen: no fall animation
     const pose = heroPose({
       time: this.clock + u.id * 0.37, alive: u.alive, moving: v.moveClock < kWalkHoldSeconds,
-      casting: u.castKind === CastKind.Ability || u.castKind === CastKind.AutoHeal, hpFraction: fill,
-      won: sim.getState() === FightState.Won, faceRight: v.faceRight,
+      casting: u.castKind === CastKind.Ability || u.castKind === CastKind.AutoHeal, hpFraction: u.enemy ? 1 : fill,
+      won: !u.enemy && sim.getState() === FightState.Won, faceRight: v.faceRight,
     }, fx);
     const foot = this.room.project(p.x + pose.dx, p.y, 0);
     const lifted = this.room.project(p.x + pose.dx, p.y, pose.lift);
-    const sc = kHeroMotion.uuPerPx * heroTuning.scale * pxPerUu;
+    const sc = kHeroMotion.uuPerPx * (u.enemy ? spriteSizes.enemy : spriteSizes.party) * unitSpriteSize(u.name) * pxPerUu;
     // Shadow stays on the floor and shrinks a little as the hero rises.
     const g = v.gfx;
     const rx = 50 * kBodyXY * pxPerUu * (1 - Math.min(0.4, pose.lift / 120));

@@ -13,25 +13,30 @@ import {
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, kBarFill, kBaseFontPx, kGold, kGoldDim, kPanelFill, kTextDim, kTextLight, lin, outline } from './draw';
 import type { RoomView } from './roomView';
-import { heroTuning } from './heroMotion';
+import { spriteSizes } from './heroMotion';
+import { loadTuning, saveTuning } from './localStore';
 import { spriteTuning, type UnitView } from './unitView';
 
 export interface HudOptions { testing: boolean }
 
-interface TuneDef { name: string; step: number; min: number; max: number; tab: number }
+/** A tuning row. `id` is what the saved values are keyed by, so keep ids stable; `tab`: 0 party and miracles, 1 enemies, 2 sprites. */
+interface TuneDef { id: string; name: string; step: number; min: number; max: number; tab: number }
 const kTune: TuneDef[] = [
-  { name: 'Enemy health and damage x', step: 0.1, min: 0.3, max: 4, tab: 1 },
-  { name: 'Cast times and windups x (0 = instant)', step: 0.25, min: 0, max: 3, tab: 0 },
-  { name: 'Party healing x', step: 0.1, min: 0, max: 3, tab: 0 },
-  { name: 'Miracle gauge fill per hit', step: 0.05, min: 0.05, max: 2, tab: 0 },
-  { name: 'Miracle costs x', step: 0.25, min: 0.25, max: 3, tab: 0 },
-  { name: 'Smite radius (world units)', step: 25, min: 100, max: 900, tab: 0 },
-  { name: 'Hurt sprite shows for (s)', step: 0.05, min: 0.05, max: 1.5, tab: 1 },
-  { name: 'Hurt sprite cooldown (s between flinches)', step: 0.25, min: 0, max: 5, tab: 1 },
-  { name: 'Enemy sprite size x', step: 0.05, min: 0.5, max: 2, tab: 1 },
-  { name: 'Party sprite size x', step: 0.05, min: 0.5, max: 2, tab: 0 },
+  { id: 'enemyMult', name: 'Enemy health and damage x', step: 0.1, min: 0.3, max: 4, tab: 1 },
+  { id: 'castTime', name: 'Cast times and windups x (0 = instant)', step: 0.25, min: 0, max: 3, tab: 0 },
+  { id: 'partyHeal', name: 'Party healing x', step: 0.1, min: 0, max: 3, tab: 0 },
+  { id: 'gaugeFill', name: 'Miracle gauge fill per hit', step: 0.05, min: 0.05, max: 2, tab: 0 },
+  { id: 'miracleCost', name: 'Miracle costs x', step: 0.25, min: 0.25, max: 3, tab: 0 },
+  { id: 'smiteRadius', name: 'Smite radius (world units)', step: 25, min: 100, max: 900, tab: 0 },
+  { id: 'hurtSeconds', name: 'Hurt sprite shows for (s)', step: 0.05, min: 0.05, max: 1.5, tab: 1 },
+  { id: 'hurtCooldown', name: 'Hurt sprite cooldown (s between flinches)', step: 0.25, min: 0, max: 5, tab: 1 },
+  { id: 'enemySprites', name: 'All enemy sprites x', step: 0.05, min: 0.5, max: 2, tab: 2 },
+  { id: 'partySprites', name: 'All party sprites x', step: 0.05, min: 0.5, max: 2, tab: 2 },
+  ...['Warrior', 'Mage', 'Assassin', 'Priest', 'Grunt', 'Archer', 'Brute', 'Shaman'].map((n) => ({
+    id: `size:${n}`, name: `${n === 'Priest' ? 'Priestess' : n} size x`, step: 0.05, min: 0.3, max: 3, tab: 2,
+  })),
 ];
-const kSpriteScaleBase = 1.15;
+const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites'];
 
 type Hit = { rect: Rect; action: () => void; prio: number };
 
@@ -51,7 +56,8 @@ export class Hud {
   private flashRefused = false;
   private armed: MiracleKind | undefined;
   private tuneTab = 0;
-  private tuneValue = [1.3, 1, 1, 0.2, 1, 300, 0.3, 1, 1, 1];
+  private tuneValue: number[] = [];
+  private copiedLeft = 0;
   private tuneTouched = false;
   private tuneInit = false;
   private resetArmedLeft = 0;
@@ -85,6 +91,8 @@ export class Hud {
     this.layout = computeLayout(w, h, party.length);
     this.scale = Math.min(1.5, Math.max(0.6, h / 1080));
     this.resetArmedLeft = Math.max(0, this.resetArmedLeft - dt);
+    this.copiedLeft = Math.max(0, this.copiedLeft - dt);
+    if (this.opts.testing && !this.tuneInit) this.tuneClick('init');
     this.flashAge += dt;
     this.refreshSidebar(dt);
     if (this.armed !== undefined && !this.rm.miracleReady(this.armed)) this.armed = undefined;
@@ -616,8 +624,9 @@ export class Hud {
     if (!this.tuneTouched) return;
     spriteTuning.hurtSeconds = this.tuneValue[6];
     spriteTuning.hurtCooldown = this.tuneValue[7];
-    spriteTuning.scale = kSpriteScaleBase * this.tuneValue[8];
-    heroTuning.scale = this.tuneValue[9];
+    spriteSizes.enemy = this.tuneValue[8];
+    spriteSizes.party = this.tuneValue[9];
+    kTune.forEach((d, i) => { if (d.id.startsWith('size:')) spriteSizes.unit[d.id.slice(5)] = this.tuneValue[i]; });
     const sim = this.sim();
     if (!sim) return;
     const c = sim.mutableConfig();
@@ -633,11 +642,39 @@ export class Hud {
     c.miracle.smiteRadius = this.tuneValue[5];
   }
 
+  /** The shipped value of every row. */
+  private tuneDefaults(): number[] {
+    return kTune.map((d) => {
+      switch (d.id) {
+        case 'enemyMult': return this.rm.opts.enemyMult;
+        case 'gaugeFill': return defaultMiracle.fillPerHit;
+        case 'smiteRadius': return defaultMiracle.smiteRadius;
+        case 'hurtSeconds': return 0.3;
+      }
+      return 1;
+    });
+  }
+
+  /** The rows that differ from the shipped values, by id (what is saved, and what Copy puts on the clipboard). */
+  private tuneChanged(): Record<string, number> {
+    const def = this.tuneDefaults();
+    const out: Record<string, number> = {};
+    kTune.forEach((d, i) => { if (Math.abs(this.tuneValue[i] - def[i]) > 1e-9) out[d.id] = this.tuneValue[i]; });
+    return out;
+  }
+
   private tuneClick(which: string): void {
     if (!this.tuneInit) {
+      // Shipped values, then whatever was saved in earlier test sessions (director, Nov 20).
       this.tuneInit = true;
-      this.tuneValue[0] = this.rm.opts.enemyMult;
-      this.tuneValue[3] = defaultMiracle.fillPerHit;
+      this.tuneValue = this.tuneDefaults();
+      const saved = loadTuning();
+      kTune.forEach((d, i) => {
+        const v = saved[d.id];
+        if (v !== undefined) this.tuneValue[i] = Math.round(Math.min(d.max, Math.max(d.min, v)) * 100) / 100;
+      });
+      this.tuneTouched = Object.keys(saved).length > 0;
+      this.tunePush();
     }
     const sim = this.sim();
     if (which === 'Fill') sim?.getGauge().add(sim.getGauge().capacity());
@@ -648,7 +685,14 @@ export class Hud {
         if (which === 'KillAll') sim!.dealDamage(-1, id, 1e9, 1);
         else { const u = sim!.getUnit(id)!; u.hp = sim!.maxHp(u); }
       }
-    } else if (which === 'Tab0' || which === 'Tab1') this.tuneTab = which === 'Tab1' ? 1 : 0;
+    } else if (which.startsWith('Tab')) this.tuneTab = Number(which.slice(3));
+    else if (which === 'Copy') {
+      const text = JSON.stringify(this.tuneChanged(), null, 1);
+      void navigator.clipboard?.writeText(text).catch(() => undefined);
+      console.info(`Tuning values:
+${text}`);
+      this.copiedLeft = 2;
+    }
     else if (which === 'ResetAll') {
       if (this.resetArmedLeft <= 0) { this.resetArmedLeft = 4; return; }
       this.resetArmedLeft = 0;
@@ -656,10 +700,11 @@ export class Hud {
       this.armed = undefined;
       this.rm.resetAllProgress();
     } else if (which === 'Reset') {
-      this.tuneValue = [this.rm.opts.enemyMult, 1, 1, defaultMiracle.fillPerHit, 1, defaultMiracle.smiteRadius, 0.3, 1, 1, 1];
+      this.tuneValue = this.tuneDefaults();
       this.tuneTouched = true;
       this.tunePush();
       this.tuneTouched = false;
+      saveTuning({});
     } else {
       const [row, sign] = which.split(':');
       const i = Number(row);
@@ -669,6 +714,7 @@ export class Hud {
         this.tuneValue[i] = Math.round(Math.min(d.max, Math.max(d.min, next)) * 100) / 100;
         this.tuneTouched = true;
         this.tunePush();
+        saveTuning(this.tuneChanged());
       }
     }
   }
@@ -677,31 +723,40 @@ export class Hud {
     if (!this.tuneInit) this.tuneClick('init');
     const rows = kTune.map((d, i) => ({ d, i })).filter((r) => r.d.tab === this.tuneTab);
     const area = L.roomArea;
-    const w = Math.min(area.w * 0.9, Math.max(area.w * 0.6, 420));
+    // Long tabs (Sprites) lay their rows out in two columns so the panel still fits a phone held sideways.
+    const cols = rows.length > 6 ? 2 : 1;
+    const perCol = Math.ceil(rows.length / cols);
+    const w = cols > 1 ? area.w * 0.96 : Math.min(area.w * 0.9, Math.max(area.w * 0.6, 420));
     const rowH = Math.max(18, area.h * 0.075);
     const pad = rowH * 0.5;
-    const h = pad + rowH * 1.2 + rowH * 1.1 + rows.length * rowH * 1.15 + rowH * 1.4 + rowH * 1.4 + rowH + pad;
+    const h = pad + rowH * 1.2 + rowH * 1.1 + perCol * rowH * 1.15 + rowH * 1.4 + rowH * 1.4 + rowH + pad;
     const panel = new Rect(area.x + (area.w - w) / 2, area.y + Math.max(0, (area.h - h) / 2), w, Math.min(h, area.h));
     box(this.g, panel, lin(0.03, 0.03, 0.05), 0.93);
     outline(this.g, panel, lin(1, 0.82, 0.35), 2);
     this.hit(panel, 2, () => undefined);   // swallow clicks on the panel
     const title = new Rect(panel.x + pad, panel.y + pad * 0.5, panel.w - 2 * pad, rowH * 1.1);
     this.texts.fit('tu.title', 'Tuning (testing builds only): changes apply live, enemy stats from the next spawn', title, kBaseFontPx * 1.2 * S, lin(1, 0.9, 0.5));
-    const tw = (panel.w - 2 * pad - pad * 0.5) / 2;
-    const tabs = [0, 1].map((k) => new Rect(panel.x + pad + k * (tw + pad * 0.5), title.bottom() + pad * 0.25, tw, rowH * 0.95));
-    ['Party and miracles', 'Enemies'].forEach((n, k) => {
+    const nt = kTuneTabs.length;
+    const tw = (panel.w - 2 * pad - pad * 0.5 * (nt - 1)) / nt;
+    const tabs = kTuneTabs.map((_, k) => new Rect(panel.x + pad + k * (tw + pad * 0.5), title.bottom() + pad * 0.25, tw, rowH * 0.95));
+    kTuneTabs.forEach((n, k) => {
       this.frame(tabs[k], k === this.tuneTab ? lin(0.3, 0.26, 0.05) : lin(0.07, 0.05, 0.07), 0.97, tabs[k].contains(this.mouse.x, this.mouse.y), k === this.tuneTab);
       this.texts.centered(`tu.tab${k}`, n, tabs[k], kBaseFontPx * 1.15 * S, kTextLight);
       this.hit(tabs[k], 3, () => this.tuneClick(`Tab${k}`));
     });
-    let y = tabs[0].bottom() + pad * 0.5;
+    const top = tabs[0].bottom() + pad * 0.5;
+    let y = top;
     const btn = rowH * 0.95;
-    for (const { d, i } of rows) {
-      const right = panel.right() - pad;
+    const colW = (panel.w - 2 * pad - pad * (cols - 1)) / cols;
+    rows.forEach(({ d, i }, n) => {
+      const col = Math.floor(n / perCol);
+      const y = top + (n % perCol) * rowH * 1.15;
+      const left = panel.x + pad + col * (colW + pad);
+      const right = left + colW;
       const plus = new Rect(right - btn, y, btn, rowH);
-      const value = new Rect(plus.x - btn * 2.4, y, btn * 2.4, rowH);
+      const value = new Rect(plus.x - btn * 2.2, y, btn * 2.2, rowH);
       const minus = new Rect(value.x - btn, y, btn, rowH);
-      const label = new Rect(panel.x + pad, y, minus.x - (panel.x + pad) - pad * 0.5, rowH);
+      const label = new Rect(left, y, minus.x - left - pad * 0.5, rowH);
       this.texts.fit(`tu.l${i}`, d.name, label, kBaseFontPx * 1.1 * S, kTextLight);
       this.frame(minus, lin(0.07, 0.05, 0.07), 0.95, minus.contains(this.mouse.x, this.mouse.y), false);
       this.texts.centered(`tu.m${i}`, '-', minus, kBaseFontPx * 1.4 * S, kTextLight);
@@ -710,12 +765,13 @@ export class Hud {
       this.texts.centered(`tu.p${i}`, '+', plus, kBaseFontPx * 1.4 * S, kTextLight);
       this.hit(minus, 3, () => this.tuneClick(`${i}:-`));
       this.hit(plus, 3, () => this.tuneClick(`${i}:+`));
-      y += rowH * 1.15;
-    }
-    y += rowH * 0.2;
+    });
+    y = top + perCol * rowH * 1.15 + rowH * 0.2;
     const aw = (panel.w - 2 * pad - pad) / 3;
-    const labels = this.tuneTab === 1 ? ['Kill all enemies', 'Heal enemies to full', 'Reset tuning'] : ['Fill miracle gauge', 'Heal party to full', 'Reset tuning'];
-    const boxes = this.tuneTab === 1 ? ['KillAll', 'HealFoes', 'Reset'] : ['Fill', 'Heal', 'Reset'];
+    const copy = this.copiedLeft > 0 ? 'Copied (also in the console)' : 'Copy changed values';
+    const labels = [['Fill miracle gauge', 'Heal party to full', 'Reset tuning'], ['Kill all enemies', 'Heal enemies to full', 'Reset tuning'],
+      [copy, 'Kill all enemies', 'Reset tuning']][this.tuneTab];
+    const boxes = [['Fill', 'Heal', 'Reset'], ['KillAll', 'HealFoes', 'Reset'], ['Copy', 'KillAll', 'Reset']][this.tuneTab];
     for (let k = 0; k < 3; ++k) {
       const r = new Rect(panel.x + pad + k * (aw + pad * 0.5), y, aw, rowH * 1.1);
       this.frame(r, lin(0.1, 0.09, 0.2), 0.95, r.contains(this.mouse.x, this.mouse.y), false);
@@ -730,7 +786,7 @@ export class Hud {
       reset, kBaseFontPx * 1.1 * S, lin(1, 0.8, 0.8));
     this.hit(reset, 3, () => this.tuneClick('ResetAll'));
     const hint = new Rect(panel.x + pad, reset.bottom() + pad * 0.3, panel.w - 2 * pad, rowH * 0.9);
-    this.texts.fit('tu.hint', 'Values reset with a new session; Reset tuning restores the shipped numbers.', hint, kBaseFontPx * S, kTextDim);
+    this.texts.fit('tu.hint', 'Changes are saved on this device until Reset tuning, which restores the shipped numbers.', hint, kBaseFontPx * S, kTextDim);
   }
 }
 
