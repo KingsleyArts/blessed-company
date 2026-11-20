@@ -652,9 +652,10 @@ export class CombatSim {
   /**
    * Casts a miracle by hand. `requested` is the clicked target (a living hero for Healing and Shield, a living enemy for Smite);
    * kNoUnit lets the sim pick (tests and bots). Nothing is spent unless the result is Cast. `castOn` receives the chosen unit id.
+   * `betweenFights` (director, Nov 19; not in Unreal) also lets Healing and Shield go out between fights (Won or NotStarted).
    */
-  castMiracle(kind: MiracleKind, requested: UnitId = kNoUnit, castOn?: { id: UnitId }): MiracleResult {
-    if (this.state !== FightState.Running) return MiracleResult.FightNotRunning;
+  castMiracle(kind: MiracleKind, requested: UnitId = kNoUnit, castOn?: { id: UnitId }, betweenFights = false): MiracleResult {
+    if (!this.miracleWindowOpen(kind, betweenFights)) return MiracleResult.FightNotRunning;
     if (!this.gauge.canAfford(kind)) return MiracleResult.NotEnoughGauge;
     if (kind === MiracleKind.DivineSmite) {
       const c = this.pickMiracleTarget(kind, requested);
@@ -677,6 +678,11 @@ export class CombatSim {
     e.text = `The goddess casts ${miracleName(kind)} on ${this.label(t)}`;
     this.log.add(e);
     return MiracleResult.Cast;
+  }
+  /** Whether a miracle of this kind may be cast now: always in a running fight; Healing and Shield also between fights if allowed. */
+  miracleWindowOpen(kind: MiracleKind, betweenFights = false): boolean {
+    if (this.state === FightState.Running) return true;
+    return betweenFights && kind !== MiracleKind.DivineSmite && (this.state === FightState.Won || this.state === FightState.NotStarted);
   }
   /** Divine Smite on the ground: every living enemy within smiteRadius of (x, y) takes smiteFractionOfMax of its max HP. */
   castSmiteAt(x: number, y: number, hit?: UnitId[]): MiracleResult {

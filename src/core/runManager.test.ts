@@ -169,4 +169,52 @@ describe('RunManager (live)', () => {
     expect(r.result).toBe(0);
     expect(sim.getGauge().value()).toBeLessThan(before);
   });
+
+  it('Heal and Shield can be cast between fights; a held Shield starts with the next fight; Smite needs a fight (director, Nov 19)', () => {
+    let checked = false;
+    for (let seed = 11; seed < 40 && !checked; ++seed) {
+      const rm = new RunManager(data, new MemoryMetaStore());
+      const hook = new DelayHook(1.5);
+      rm.setTransitionHook(hook);
+      rm.startRunWithFights(seed);
+      rm.setCombatSpeed(10);
+      runFor(rm, 600, () => !rm.getFlow().fightPending() || !rm.getFlow().active());
+      if (!rm.getFlow().active()) continue;
+      const sim = rm.getSim()!;
+      expect(sim.getState()).not.toBe(FightState.Running);
+      sim.getGauge().add(1000);
+      expect(rm.miracleReady(0)).toBe(true);    // Divine Healing
+      expect(rm.miracleReady(1)).toBe(true);    // Divine Shield
+      expect(rm.miracleReady(2)).toBe(false);   // Divine Smite: nothing to strike
+      const hero = sim.getUnits().find((u) => !u.enemy && !u.summon && u.alive)!;
+      hero.hp = sim.maxHp(hero) * 0.5;
+      const g0 = sim.getGauge().value();
+      expect(rm.castMiracle(0, hero.id).result).toBe(0);
+      expect(hero.hp).toBeGreaterThan(sim.maxHp(hero) * 0.5);
+      expect(sim.getGauge().value()).toBeLessThan(g0);
+      expect(rm.castSmiteAt(0, 0).result).toBe(1);   // FightNotRunning
+      const shielded = rm.castMiracle(1, hero.id);
+      expect(shielded.result).toBe(0);
+      const full = sim.getUnit(shielded.on)!.shieldLeft;
+      expect(full).toBeGreaterThan(0);
+
+      const here = rm.getFlow().currentFloor().nodes[rm.getFlow().currentNode()];
+      const dir = [Dir.North, Dir.East, Dir.South, Dir.West].find((d) => here.door[d] >= 0)!;
+      expect(rm.moveDirection(dir)).toBe(true);
+      if (!rm.getFlow().fightPending()) continue;   // walked into an empty room: try another seed
+      const name = hero.name;
+      const staged = sim.getUnits().find((u) => u.name === name)!;
+      expect(staged.shieldLeft).toBe(full);   // kept through PrepareNextFight
+      for (let i = 0; i < 200 && rm.isTransitioning(); ++i) {
+        rm.tick(1 / 60);
+        hook.advance(1 / 60);
+      }
+      expect(sim.getState()).toBe(FightState.Running);
+      const inFight = sim.getUnits().find((u) => u.name === name)!;
+      expect(inFight.shieldLeft).toBeGreaterThan(0);
+      expect(inFight.shieldLeft).toBeLessThanOrEqual(full);
+      checked = true;
+    }
+    expect(checked).toBe(true);
+  });
 });

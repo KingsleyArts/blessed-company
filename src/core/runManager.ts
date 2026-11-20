@@ -17,7 +17,7 @@ import { BuyRefusal, type BuyResult } from './essenceSidebar';
 import { RoomType, type Dir } from './floorGenerator';
 import { applyGearToSim, gearLevel } from './gearApply';
 import { kMetaMaxGold, makeMeta, parseMeta, resetProgress, serializeMeta, type MetaSave } from './metaSave';
-import { MiracleResult, type MiracleKind } from './miracleGauge';
+import { MiracleKind, MiracleResult } from './miracleGauge';
 import { RosterResult, activeParty, kActiveSlots, rosterIsActive, rosterOwns, rosterPriestClass, toggleActiveHero } from './roster';
 import { RunBot } from './runBot';
 import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, runOutcomeName, type RoomEntry, type RunResults } from './runFlow';
@@ -196,6 +196,8 @@ export class RunManager {
   fightSerial = 0;
   /** Dead party units whose body is hidden until a revive (DespawnDeadParty). */
   readonly despawnedParty = new Set<string>();
+  /** Heroes given Divine Shield between fights: the shield is kept through PrepareNextFight and starts with the next fight. */
+  private readonly heldShields = new Set<string>();
   /** ClearNonPartyActors ran: the finished fight's enemy bodies stay behind in the room the party left. */
   bodiesCleared = false;
   /** The sim the kill payout listens to. */
@@ -326,6 +328,7 @@ export class RunManager {
     const sim = this.sim!;
     this.staged = false;
     sim.startFight();
+    this.heldShields.clear();   // held shields now tick down in this fight
     this.accumulator = 0;
     this.finishHandled = false;
     this.bodiesCleared = false;
@@ -345,7 +348,13 @@ export class RunManager {
 
   private prepareNextFight(): void {
     if (!this.sim || this.sim.getState() === FightState.Running) return;
+    const held = new Map<string, number>();
+    for (const u of this.sim.getUnits()) if (this.heldShields.has(u.name) && !u.enemy && !u.summon && u.alive) held.set(u.name, u.shieldLeft);
     this.sim.prepareNextFight();
+    for (const u of this.sim.getUnits()) {
+      const s = held.get(u.name);
+      if (s !== undefined && !u.enemy && !u.summon) u.shieldLeft = s;
+    }
     ++this.fightSerial;
   }
 
@@ -447,6 +456,7 @@ export class RunManager {
     this.inFirstFight = true;
     this.auto = false;
     this.despawnedParty.clear();
+    this.heldShields.clear();
     this.syncMeta();
     this.notify(RunChange.RunStarted);
     this.notify(RunChange.MapChanged);
@@ -832,10 +842,21 @@ export class RunManager {
   }
 
   // ------------------------------------------------------------------------------------------ miracles (the HUD calls these)
+  /** Whether the HUD may offer this miracle now: a live run, the gauge can pay, and a fight is running or (Healing, Shield) the party is between fights. */
+  miracleReady(kind: MiracleKind): boolean {
+    const sim = this.sim;
+    return !!sim && this.flow.active() && sim.miracleWindowOpen(kind, true) && sim.getGauge().canAfford(kind);
+  }
+
   castMiracle(kind: MiracleKind, target: UnitId): { result: MiracleResult; on: UnitId } {
     if (!this.sim) return { result: MiracleResult.FightNotRunning, on: kNoUnit };
     const on = { id: kNoUnit };
-    const result = this.sim.castMiracle(kind, target, on);
+    const between = this.sim.getState() !== FightState.Running;
+    const result = this.sim.castMiracle(kind, target, on, this.flow.active());
+    if (result === MiracleResult.Cast && between && kind === MiracleKind.DivineShield) {
+      const u = this.sim.getUnit(on.id);
+      if (u) this.heldShields.add(u.name);
+    }
     return { result, on: on.id };
   }
 

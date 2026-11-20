@@ -28,6 +28,13 @@ Nothing licensed is committed to this repo. `npm run assets` (`scripts/copy-asse
 | Goblin grunt frames (18 PNGs) | `public/assets/vendor/goblin_grunt/` | copied as-is | Source and licence still **DIRECTOR TO FILL** (row above). |
 | "Into the Depths", "No Turning Back" | `public/assets/vendor/music/*.wav` | converted by the script: mono, 22.05 kHz, 16-bit (about 7 MB each, down from 27-28 MB) | A modified copy, which the pack licence allows. A dev server or a static build serves these files to the browser, so for a public build check that this does not count as redistributing the raw files. MP3/OGG would be smaller still; no encoder is installed, and adding one as a dependency was not done. |
 
+### Committed in this repo
+
+| Asset | Where | Source / author | Licence | Used in the build? | Notes |
+|---|---|---|---|---|---|
+| Temple background (temple interior with the goddess statue and a seated priestess) | `public/assets/ui/temple_bg.webp` (1672×941, 434 KB) | Supplied by the director on Nov 19. Who made it and with which tool: **DIRECTOR TO FILL** | **DIRECTOR TO FILL** | Yes (Temple screen background) | Committed because the director supplied it for the game. If an AI image tool made it, list the tool in the AI tools table. |
+| Temple menu mockup | `reports/assets/temple_mockup.webp` | Supplied by the director on Nov 19 | Reference only | No | The layout target for the Temple screen. |
+
 ## Open items
 1. Fill the two **DIRECTOR TO FILL** rows (sprite sheet source and licence, other AI tools).
 2. Confirm every row's licence allows distribution inside a packaged game (the music and low-poly packs forbid redistributing the raw files, which a cooked build does not do).

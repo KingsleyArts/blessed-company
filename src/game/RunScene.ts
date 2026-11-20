@@ -28,7 +28,6 @@ export class RunScene extends Phaser.Scene {
   private dprNow = 1;
   private music!: Music;
   private settings!: Settings;
-  private templeFromResults = false;
 
   constructor() {
     super('Run');
@@ -77,15 +76,17 @@ export class RunScene extends Phaser.Scene {
     this.showTemple();
   }
 
-  /** The Temple; `fromResults` gives it a Back button to the run-over card. */
-  private showTemple(fromResults = this.templeFromResults): void {
-    this.templeFromResults = fromResults;
+  /** The Temple home screen; the last run's results show under its Expedition Report tab. */
+  private showTemple(): void {
     const t = this.rm.getTempleSnapshot(amountValue(this.hud.ui.amountMode));
     if (!t.valid) return;
-    this.overlay.showTemple(t, this.hud.ui.amountMode, this.music.getVolume(), {
+    const r = this.rm.getRunResults();
+    const report = r.valid
+      ? { victory: r.victory, lines: formatResultLines(r.causeOfDeath, r.killerName, r.floorReached, r.roomsCleared, r.kills, r.essenceEarned, r.goldEarned, r.bestFloor) }
+      : undefined;
+    this.overlay.showTemple(t, this.rm.getFlow().getRun().essence, this.hud.ui.amountMode, this.music.getVolume(), report, {
       buy: (id) => { this.rm.templeBuy(id, amountValue(this.hud.ui.amountMode)); },
       amount: (m) => { this.hud.ui.amountMode = m; this.showTemple(); },
-      back: fromResults ? () => this.showResults() : undefined,
       newRun: () => this.newRun(),
       reset: () => {
         this.rm.resetProgressOnly();
@@ -111,7 +112,6 @@ export class RunScene extends Phaser.Scene {
 
   newRun(): void {
     this.overlay.hide();
-    this.templeFromResults = false;
     if (this.params.floor > 1 || this.params.priest) this.rm.armNextRun(this.params.floor, this.params.priest);
     this.rm.startRunWithFights(this.params.seed);
   }
@@ -121,7 +121,7 @@ export class RunScene extends Phaser.Scene {
     if (!r.valid) return;
     const lines = formatResultLines(r.causeOfDeath, r.killerName, r.floorReached, r.roomsCleared, r.kills, r.essenceEarned, r.goldEarned, r.bestFloor);
     this.overlay.showResults(r.victory, lines, [
-      { label: 'Temple', cls: 'blue', onClick: () => this.showTemple(true) },
+      { label: 'Temple', cls: 'blue', onClick: () => this.showTemple() },
       { label: 'New Run', cls: 'go', onClick: () => this.newRun() },
     ]);
   }
@@ -132,6 +132,7 @@ export class RunScene extends Phaser.Scene {
     this.unitTexts.begin();
     this.hudTexts.begin();
     this.hud.overlayOpen = this.overlay.isOpen();
+    this.hud.preRun = this.overlay.kind === 'temple' && !this.rm.getFlow().active();
     this.hud.update(dt, w, h);
     const area = this.hud.layout.roomArea;
     this.room.fit(area, w, h);
