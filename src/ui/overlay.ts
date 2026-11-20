@@ -4,6 +4,7 @@
 import type { TempleSnapshot } from '../core/runManager';
 import type { ResultLine } from '../core/uiText';
 import { buildTemple, buildTempleBackdrop, type TempleTab, type TempleView } from './temple';
+import { buildTitle, type TitleView } from './title';
 
 const kCss = `
 .bc-dim { position: fixed; background: rgba(0,0,0,0.74); display: flex; align-items: center; justify-content: center;
@@ -58,14 +59,24 @@ export interface TempleHandlers {
   volume: (v: number) => void;
 }
 
+export interface TitleHandlers {
+  /** A save exists (Continue works, and New Game asks for a second tap before erasing it). */
+  hasSave: () => boolean;
+  volume: () => number;
+  /** Start over: erase progress (when there was any) and open the Temple. */
+  newGame: () => void;
+  continue: () => void;
+  setVolume: (v: number) => void;
+}
+
 export class Overlay {
   private root: HTMLElement;
   private current: HTMLElement | undefined;
   private area: Area = { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
   private resetArmedUntil = 0;
   private resetTimer = 0;
-  /** What is up: none, the run-over card, or the Temple. */
-  kind: 'none' | 'results' | 'temple' = 'none';
+  /** What is up: none, the title screen, the run-over card, or the Temple. */
+  kind: 'none' | 'title' | 'results' | 'temple' = 'none';
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -174,6 +185,49 @@ export class Overlay {
     built.scroller.scrollTop = scroll;
     built.refreshArrows();
   }
+
+  /** The title screen (director's art, Nov 19): the first screen when the game opens. */
+  showTitle(h: TitleHandlers): void {
+    this.titleHandlers = h;
+    this.titlePanel = 'none';
+    this.newGameArmedUntil = 0;
+    this.renderTitle();
+  }
+
+  private renderTitle(): void {
+    const h = this.titleHandlers;
+    if (!h) return;
+    const view: TitleView = { canContinue: h.hasSave(), newGameArmed: performance.now() < this.newGameArmedUntil, volume: h.volume(), panel: this.titlePanel };
+    const node = buildTitle(view, {
+      newGame: () => {
+        // Over a save, the first tap only warns; a second tap within 4 s erases it (like Reset progress in the Temple).
+        if (h.hasSave() && performance.now() >= this.newGameArmedUntil) {
+          this.newGameArmedUntil = performance.now() + 4000;
+          window.clearTimeout(this.newGameTimer);
+          this.newGameTimer = window.setTimeout(() => { if (this.kind === 'title') this.renderTitle(); }, 4050);
+          this.renderTitle();
+          return;
+        }
+        this.newGameArmedUntil = 0;
+        h.newGame();
+      },
+      continue: () => h.continue(),
+      settings: () => { this.titlePanel = 'settings'; this.renderTitle(); },
+      quit: () => { this.titlePanel = 'quit'; this.renderTitle(); },
+      closePanel: () => { this.titlePanel = 'none'; this.renderTitle(); },
+      volume: (v) => h.setVolume(v),
+    }, `${import.meta.env.BASE_URL}assets/ui/title_bg.webp`);
+    this.current?.remove();
+    this.dropBackdrop();
+    this.current = node;
+    this.kind = 'title';
+    this.root.appendChild(node);
+  }
+
+  private titleHandlers: TitleHandlers | undefined;
+  private titlePanel: TitleView['panel'] = 'none';
+  private newGameArmedUntil = 0;
+  private newGameTimer = 0;
 
   private templeTab: TempleTab = 'blessings';
   private shownTab: TempleTab | undefined;

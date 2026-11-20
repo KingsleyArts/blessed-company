@@ -33,6 +33,7 @@ Nothing licensed is committed to this repo. `npm run assets` (`scripts/copy-asse
 | Asset | Where | Source / author | Licence | Used in the build? | Notes |
 |---|---|---|---|---|---|
 | Temple background (temple interior with the goddess statue and a seated priestess) | `public/assets/ui/temple_bg.webp` (1672×941, 434 KB) | Supplied by the director on Nov 19. Who made it and with which tool: **DIRECTOR TO FILL** | **DIRECTOR TO FILL** | Yes (Temple screen background) | Committed because the director supplied it for the game. If an AI image tool made it, list the tool in the AI tools table. |
+| Title screen art (title, "Divine Staffing Agency" subtitle, New Game / Continue / Settings / Quit painted in) | `public/assets/ui/title_bg.webp` (1671×941, 339 KB) | Supplied by the director on Nov 19. Who made it and with which tool: **DIRECTOR TO FILL** | **DIRECTOR TO FILL** | Yes (title screen; invisible tap areas over the painted buttons) | The button labels are part of the image, so changing a label means new art. If an AI image tool made it, list the tool in the AI tools table. |
 | Temple menu mockup | `reports/assets/temple_mockup.webp` | Supplied by the director on Nov 19 | Reference only | No | The layout target for the Temple screen. |
 
 ## Open items

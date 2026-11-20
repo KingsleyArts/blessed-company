@@ -72,8 +72,26 @@ export class RunScene extends Phaser.Scene {
       if (c === RunChange.MetaChanged && this.overlay.kind === 'temple') this.showTemple();
     });
     (window as unknown as { bc: unknown }).bc = { rm: this.rm, hud: this.hud, scene: this };   // console access while testing
-    // The Temple is the home screen: up when the game starts (Nov 14).
-    this.showTemple();
+    // The title screen comes first (director, Nov 19); New Game and Continue lead to the Temple, the home screen (Nov 14).
+    this.showTitle();
+  }
+
+  /** The title screen: New Game (erases a save after a second tap), Continue (needs a save), Settings (music), Quit. */
+  private showTitle(): void {
+    this.overlay.showTitle({
+      hasSave: () => this.store.load() !== undefined,
+      volume: () => this.music.getVolume(),
+      newGame: () => {
+        if (this.store.load() !== undefined) this.rm.resetProgressOnly();
+        this.showTemple();
+      },
+      continue: () => this.showTemple(),
+      setVolume: (v) => {
+        this.music.setVolume(v);
+        this.settings.volume = v;
+        saveSettings(this.settings);
+      },
+    });
   }
 
   /** The Temple home screen; the last run's results show under its Expedition Report tab. */
@@ -132,7 +150,7 @@ export class RunScene extends Phaser.Scene {
     this.unitTexts.begin();
     this.hudTexts.begin();
     this.hud.overlayOpen = this.overlay.isOpen();
-    this.hud.preRun = this.overlay.kind === 'temple' && !this.rm.getFlow().active();
+    this.hud.preRun = (this.overlay.kind === 'temple' || this.overlay.kind === 'title') && !this.rm.getFlow().active();
     this.hud.update(dt, w, h);
     const area = this.hud.layout.roomArea;
     this.room.fit(area, w, h);
