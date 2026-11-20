@@ -86,5 +86,6 @@ export function heroPose(s: HeroState, fx: HeroFx, m = kHeroMotion): HeroPose {
 /** The heroes that have a combat sprite (the ones a player can have today; Barbarian and Summoner keep the sphere). */
 export const kHeroSpriteClasses = ['Warrior', 'Mage', 'Assassin', 'Priest'] as const;
 export const heroTextureKey = (cls: string): string => `hero_${cls}`;
-/** The chibi art looks toward the viewer's left, so it is mirrored to face right. */
-export const kSpriteFacesLeft = true;
+/** Which way the chibi art faces as drawn. It faces right (director, Nov 20: with `true` the heroes attacked with their backs turned),
+ *  so it is mirrored only when the hero looks left. */
+export const kSpriteFacesLeft = false;
