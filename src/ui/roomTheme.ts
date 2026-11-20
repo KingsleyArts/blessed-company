@@ -3,11 +3,38 @@
 // same every time it is drawn.
 
 export type Rgb = [number, number, number];
-export interface RoomTheme { name: string; base: Rgb[]; propsPerRoom: number }   // base: tile A, tile B, wall, curb, door mat, props
+/** A theme's tile set (Nov 20): texture keys loaded by BootScene. Without art (or before it loads) the room uses the flat colours. */
+export interface RoomArt {
+  /** Floor textures and how often each is picked per floor cell (they share one stone layout, so any order tiles seamlessly). */
+  floor: string[];
+  floorWeights: number[];
+  wallTop: string;
+  /** Wall front and side faces; the wall-top texture (darkened) stands in until a wall face texture exists. */
+  wallFace?: string;
+  doorway: string;
+  /** Rubble strip along the foot of the walls (transparent). */
+  trim: string;
+  /** Standing props and their height in world units; one is picked per scattered prop. */
+  props: { key: string; height: number; weight: number }[];
+  /** Wall torches on the far wall, and their height. */
+  torch?: { key: string; height: number };
+}
+
+export interface RoomTheme { name: string; base: Rgb[]; propsPerRoom: number; art?: RoomArt }   // base: tile A, tile B, wall, curb, door mat, props
 
 export const kThemes: RoomTheme[] = [
   { name: 'Brick', base: [[0.55, 0.28, 0.14], [0.43, 0.21, 0.11], [0.42, 0.10, 0.09], [0.28, 0.07, 0.07], [0.20, 0.36, 0.14], [0.30, 0.30, 0.30]], propsPerRoom: 0 },
-  { name: 'Goblin Cave', base: [[0.30, 0.27, 0.22], [0.24, 0.22, 0.18], [0.20, 0.17, 0.15], [0.14, 0.12, 0.10], [0.16, 0.30, 0.12], [0.26, 0.23, 0.20]], propsPerRoom: 16 },
+  { name: 'Goblin Cave', base: [[0.30, 0.27, 0.22], [0.24, 0.22, 0.18], [0.20, 0.17, 0.15], [0.14, 0.12, 0.10], [0.16, 0.30, 0.12], [0.26, 0.23, 0.20]], propsPerRoom: 16,
+    art: {
+      floor: ['cave_floor_a', 'cave_floor_b', 'cave_floor_c'], floorWeights: [0.7, 0.2, 0.1],
+      wallTop: 'cave_wall_top', doorway: 'cave_doorway', trim: 'cave_trim',
+      props: [
+        { key: 'cave_prop_boulder', height: 120, weight: 3 }, { key: 'cave_prop_rocks', height: 70, weight: 4 },
+        { key: 'cave_prop_stalagmite', height: 170, weight: 2 }, { key: 'cave_prop_bones', height: 80, weight: 2 },
+        { key: 'cave_prop_mushrooms', height: 110, weight: 2 },
+      ],
+      torch: { key: 'cave_prop_torch', height: 130 },
+    } },
 ];
 
 /** tol.RoomTheme default 1: goblin cave. */
@@ -50,6 +77,11 @@ export function scatterWallProps(seed: bigint, nodeId: number, hx: number, hy: n
     });
   }
   return out;
+}
+
+/** Every texture key a theme's art uses (for loading). */
+export function artKeys(a: RoomArt): string[] {
+  return [...a.floor, a.wallTop, ...(a.wallFace ? [a.wallFace] : []), a.doorway, a.trim, ...a.props.map((p) => p.key), ...(a.torch ? [a.torch.key] : [])];
 }
 
 export const rgbToInt = (c: Rgb, k = 1): number => {

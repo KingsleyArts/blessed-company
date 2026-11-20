@@ -2,12 +2,12 @@
 // (checkered floor, walls with a doorway where the floor has a door, a green door mat in the doorway); every room behind one of its doors
 // is drawn next to it, dimmed. A move plays: WalkOut (to the doorway) -> Pan (the camera slides to the next room while the party keeps
 // walking in) -> Recenter (the new room becomes the origin) -> WalkIn (to the formation) -> done(), which starts the room's fight.
-import Phaser from 'phaser';
 import type { Floor } from '../core/floorGenerator';
 import type { RunManager, TransitionHook, WalkStep } from '../core/runManager';
 import { Camera, regionFromRect, type Vec3 } from '../ui/cameraMath';
 import type { Rect } from '../ui/hudLayout';
-import { rgbToInt, scatterWallProps, themeById, type Prop } from '../ui/roomTheme';
+import { artKeys, rgbToInt, scatterWallProps, themeById, type Prop, type RoomArt } from '../ui/roomTheme';
+import type { Img, RoomCanvas } from './roomCanvas';
 
 // ---- camera (UI/TolRoomView.cpp) ----
 export const kPitchDeg = 58;
@@ -33,6 +33,11 @@ const kSlotSpacing = 110;
 const kWalkTimeout = 30;
 const kThemeId = 1;   // tol.RoomTheme default: goblin cave
 const kVoid = 0x050506;
+// ---- tile-set art (Nov 20): one floor or wall texture covers this many world units (about the hero sprites' pixel density) ----
+const kArtWorld = 400;
+/** The rubble trim: world length of one strip image, and how far in front of the wall face it stands. */
+const kTrimLen = 720;
+const kTrimInset = 18;
 
 const dirVec = (d: number): { x: number; y: number } => [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }][d];
 const isSide = (d: number): boolean => d === 1 || d === 3;
@@ -370,36 +375,101 @@ export class RoomView implements TransitionHook {
   // ---------------------------------------------------------------- drawing
   needsRedraw(): boolean { return this.dirty; }
 
-  draw(g: Phaser.GameObjects.Graphics, area: Rect): void {
+  /** Looks up a loaded texture image by key (set by the scene); a theme's art is used only when all of it is loaded. */
+  artImage: (key: string) => Img | undefined = () => undefined;
+
+  draw(rc: RoomCanvas, area: Rect, dpr: number): void {
     this.dirty = false;
-    g.clear();
-    g.fillStyle(kVoid, 1);
-    g.fillRect(area.x, area.y, area.w, area.h);
+    this.rc = rc;
+    this.area = area;
+    rc.begin(area, dpr);
+    rc.fillPoly([{ x: area.x, y: area.y }, { x: area.right(), y: area.y }, { x: area.right(), y: area.bottom() }, { x: area.x, y: area.bottom() }], kVoid);
+    const theme = themeById(kThemeId);
+    this.art = theme.art && artKeys(theme.art).every((k) => this.artImage(k)) ? theme.art : undefined;
     // Far rooms first (north before south), so nearer walls cover farther floors.
     const mods = [...this.modules.values()].sort((a, b) => a.gy - b.gy || a.gx - b.gx);
-    for (const m of mods) if (m.brightness > 0.01) this.drawModule(g, m);
+    for (const m of mods) if (m.brightness > 0.01) this.drawModule(m);
+    rc.end();
   }
 
-  private quad(g: Phaser.GameObjects.Graphics, pts: Vec3[], color: number): void {
+  private rc!: RoomCanvas;
+  private area!: Rect;
+  private art: RoomArt | undefined;
+  private img(key: string): Img { return this.artImage(key)!; }
+
+  private quad(pts: Vec3[], color: number): void {
     const p = pts.map((q) => this.project(q.x, q.y, q.z));
     if (p.some((q) => q.depth <= 0)) return;
-    g.fillStyle(color, 1);
-    g.fillPoints(p.map((q) => new Phaser.Geom.Point(q.x, q.y)), true);
+    this.rc.fillPoly(p, color);
   }
 
-  private box(g: Phaser.GameObjects.Graphics, x0: number, y0: number, x1: number, y1: number, h: number, top: number, front: number, side: number, cx: number): void {
+  /** Paints a textured rectangle in the world: `origin` + u * uAxis + v * vAxis for u in [u0, u1], v in [v0, v1] (world units). The
+   *  texture repeats every texU x texV world units, anchored at the origin; `pick` chooses the image per repeat (floor variants). The
+   *  rectangle is cut at every repeat and at most every `cell` units, so each affine piece stays close to the true perspective. */
+  private plane(pick: (iu: number, iv: number) => Img, origin: Vec3, uAxis: Vec3, vAxis: Vec3, u0: number, u1: number, v0: number, v1: number,
+    texU: number, texV: number, shade: number, cell = 200): void {
+    const cuts = (a: number, b: number, rep: number): number[] => {
+      const out = [a];
+      let x = a;
+      while (x < b - 1e-6) {
+        const nextRep = (Math.floor(x / rep + 1e-9) + 1) * rep;
+        x = Math.min(b, nextRep, x + cell);
+        out.push(x);
+      }
+      return out;
+    };
+    const us = cuts(u0, u1, texU), vs = cuts(v0, v1, texV);
+    const at = (u: number, v: number): { x: number; y: number; depth: number } => this.project(
+      origin.x + uAxis.x * u + vAxis.x * v, origin.y + uAxis.y * u + vAxis.y * v, origin.z + uAxis.z * u + vAxis.z * v);
+    for (let a = 0; a + 1 < us.length; ++a) {
+      for (let b = 0; b + 1 < vs.length; ++b) {
+        const ua = us[a], ub = us[a + 1], va = vs[b], vb = vs[b + 1];
+        const iu = Math.floor((ua + ub) / 2 / texU), iv = Math.floor((va + vb) / 2 / texV);
+        const base = pick(iu, iv);
+        const im = this.rc.shaded(base, shade);
+        const sx = (u: number): number => ((u - iu * texU) / texU) * base.width;
+        const sy = (v: number): number => ((v - iv * texV) / texV) * base.height;
+        const d = [at(ua, va), at(ub, va), at(ub, vb), at(ua, vb)];
+        if (d.some((q) => q.depth <= 0)) continue;
+        // Skip pieces wholly outside the room view (most of the dimmed neighbouring rooms).
+        const A = this.area;
+        if (d.every((q) => q.x < A.x) || d.every((q) => q.x > A.right()) || d.every((q) => q.y < A.y) || d.every((q) => q.y > A.bottom())) continue;
+        this.rc.texQuad(im, [{ x: sx(ua), y: sy(va) }, { x: sx(ub), y: sy(va) }, { x: sx(ub), y: sy(vb) }, { x: sx(ua), y: sy(vb) }], d);
+      }
+    }
+  }
+
+  private box(x0: number, y0: number, x1: number, y1: number, h: number, top: number, front: number, side: number, cx: number): void {
     // Top, the camera-facing front (+Y) and the side facing the room centre.
     if (x1 - x0 <= 0 || y1 - y0 <= 0) return;
-    if (cx > x1) this.quad(g, [{ x: x1, y: y0, z: 0 }, { x: x1, y: y1, z: 0 }, { x: x1, y: y1, z: h }, { x: x1, y: y0, z: h }], side);
-    else if (cx < x0) this.quad(g, [{ x: x0, y: y0, z: 0 }, { x: x0, y: y1, z: 0 }, { x: x0, y: y1, z: h }, { x: x0, y: y0, z: h }], side);
-    this.quad(g, [{ x: x0, y: y1, z: 0 }, { x: x1, y: y1, z: 0 }, { x: x1, y: y1, z: h }, { x: x0, y: y1, z: h }], front);
-    this.quad(g, [{ x: x0, y: y0, z: h }, { x: x1, y: y0, z: h }, { x: x1, y: y1, z: h }, { x: x0, y: y1, z: h }], top);
+    if (cx > x1) this.quad([{ x: x1, y: y0, z: 0 }, { x: x1, y: y1, z: 0 }, { x: x1, y: y1, z: h }, { x: x1, y: y0, z: h }], side);
+    else if (cx < x0) this.quad([{ x: x0, y: y0, z: 0 }, { x: x0, y: y1, z: 0 }, { x: x0, y: y1, z: h }, { x: x0, y: y0, z: h }], side);
+    this.quad([{ x: x0, y: y1, z: 0 }, { x: x1, y: y1, z: 0 }, { x: x1, y: y1, z: h }, { x: x0, y: y1, z: h }], front);
+    this.quad([{ x: x0, y: y0, z: h }, { x: x1, y: y0, z: h }, { x: x1, y: y1, z: h }, { x: x0, y: y1, z: h }], top);
   }
 
-  private drawModule(g: Phaser.GameObjects.Graphics, m: Module): void {
+  /** The textured wall box: the same faces as box(), with the theme's wall textures (texture anchored to the module origin `o`). */
+  private boxTex(o: { x: number; y: number }, x0: number, y0: number, x1: number, y1: number, h: number, cx: number, k: number,
+    shades: [number, number, number] = [1, 0.78, 0.6]): void {
+    if (x1 - x0 <= 0 || y1 - y0 <= 0) return;
+    const a = this.art!;
+    const topImg = this.img(a.wallTop);
+    const faceImg = this.img(a.wallFace ?? a.wallTop);
+    const one = (im: Img) => () => im;
+    const T = kArtWorld;
+    const down: Vec3 = { x: 0, y: 0, z: -1 };
+    const xf = cx > x1 ? x1 : cx < x0 ? x0 : undefined;
+    // Faces and the thin tops bend little under this camera, so they are cut only at texture repeats.
+    if (xf !== undefined) this.plane(one(faceImg), { x: xf, y: o.y, z: h }, { x: 0, y: 1, z: 0 }, down, y0 - o.y, y1 - o.y, 0, h, T, T, shades[2] * k, T);
+    this.plane(one(faceImg), { x: o.x, y: y1, z: h }, { x: 1, y: 0, z: 0 }, down, x0 - o.x, x1 - o.x, 0, h, T, T, shades[1] * k, T);
+    this.plane(one(topImg), { x: o.x, y: o.y, z: h }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, x0 - o.x, x1 - o.x, y0 - o.y, y1 - o.y, T, T, shades[0] * k, T);
+  }
+
+  private drawModule(m: Module): void {
     const theme = themeById(kThemeId);
     const k = m.brightness;
     const o = this.moduleOrigin(m.node);
+    const art = this.art;
     const tileA = rgbToInt(theme.base[0], k);
     const tileB = rgbToInt(theme.base[1], k);
     const wallTop = rgbToInt(theme.base[2], k * 1.15);
@@ -409,18 +479,29 @@ export class RoomView implements TransitionHook {
     const mat = rgbToInt(theme.base[4], k);
     const prop = rgbToInt(theme.base[5], k);
     const propDark = rgbToInt(theme.base[5], k * 0.7);
-    // Floor tiles.
-    for (let ty = 0; ty < kTilesY; ++ty) {
-      for (let tx = 0; tx < kTilesX; ++tx) {
-        const x0 = o.x - kHx + tx * kTile;
-        const y0 = o.y - kHy + ty * kTile;
-        this.quad(g, [{ x: x0, y: y0, z: 0 }, { x: x0 + kTile, y: y0, z: 0 }, { x: x0 + kTile, y: y0 + kTile, z: 0 }, { x: x0, y: y0 + kTile, z: 0 }],
-          (tx + ty) % 2 === 0 ? tileA : tileB);
+    // Floor: textured cells (a variant per cell, fixed per room) or the checkered tiles.
+    if (art) {
+      const floors = art.floor.map((key) => this.img(key));
+      const total = art.floorWeights.reduce((x, y) => x + y, 0);
+      const pick = (iu: number, iv: number): Img => {
+        let r = (hash3(m.node, iu, iv) / 4294967296) * total;
+        for (let i = 0; i < floors.length; ++i) { r -= art.floorWeights[i]; if (r < 0) return floors[i]; }
+        return floors[0];
+      };
+      this.plane(pick, { x: o.x - kHx, y: o.y - kHy, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, 0, 2 * kHx, 0, 2 * kHy, kArtWorld, kArtWorld, k);
+    } else {
+      for (let ty = 0; ty < kTilesY; ++ty) {
+        for (let tx = 0; tx < kTilesX; ++tx) {
+          const x0 = o.x - kHx + tx * kTile;
+          const y0 = o.y - kHy + ty * kTile;
+          this.quad([{ x: x0, y: y0, z: 0 }, { x: x0 + kTile, y: y0, z: 0 }, { x: x0 + kTile, y: y0 + kTile, z: 0 }, { x: x0, y: y0 + kTile, z: 0 }],
+            (tx + ty) % 2 === 0 ? tileA : tileB);
+        }
       }
     }
     const hasDoor = (d: number): boolean => ((m.doorMask >> d) & 1) === 1;
     const half = kDoorW / 2;
-    // Door mats in the doorways.
+    // Door mats in the doorways (the cave's worn threshold runs through the doorway, its moss edges against the wall ends).
     for (let d = 0; d < 4; ++d) {
       if (!hasDoor(d)) continue;
       const dv = dirVec(d);
@@ -430,38 +511,89 @@ export class RoomView implements TransitionHook {
       const a = { x: o.x + dv.x * e0 - pv.x * half, y: o.y + dv.y * e0 - pv.y * half };
       const b = { x: o.x + dv.x * e1 + pv.x * half, y: o.y + dv.y * e1 + pv.y * half };
       const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
-      this.quad(g, [{ x: x0, y: y0, z: 1 }, { x: x1, y: y0, z: 1 }, { x: x1, y: y1, z: 1 }, { x: x0, y: y1, z: 1 }], mat);
+      if (art) {
+        const im = this.img(art.doorway);
+        // u runs through the doorway (image left to right), v across it (image top to bottom = the door's width).
+        if (isSide(d)) this.plane(() => im, { x: x0, y: y0, z: 1 }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, 0, x1 - x0, 0, y1 - y0, kDoorW, kDoorW, k);
+        else this.plane(() => im, { x: x0, y: y0, z: 1 }, { x: 0, y: 1, z: 0 }, { x: 1, y: 0, z: 0 }, 0, y1 - y0, 0, x1 - x0, kDoorW, kDoorW, k);
+      } else this.quad([{ x: x0, y: y0, z: 1 }, { x: x1, y: y0, z: 1 }, { x: x1, y: y1, z: 1 }, { x: x0, y: y1, z: 1 }], mat);
     }
-    // Props along the walls (back half first).
     const sortedProps = [...m.props].sort((a, b) => a.y - b.y);
-    for (const p of sortedProps.filter((q) => q.y < 0)) this.drawProp(g, p, o, prop, propDark);
+    if (!art) for (const p of sortedProps.filter((q) => q.y < 0)) this.drawProp(p, o, prop, propDark);
     // North wall (far), split at the doorway.
     const ox0 = o.x - kHx - kWallT, ox1 = o.x + kHx + kWallT;
     const ny0 = o.y - kHy - kWallT, ny1 = o.y - kHy;
+    const wall = (x0: number, y0: number, x1: number, y1: number): void => {
+      if (art) this.boxTex(o, x0, y0, x1, y1, kWallH, o.x, k);
+      else this.box(x0, y0, x1, y1, kWallH, wallTop, wallFront, wallSide, o.x);
+    };
     if (hasDoor(0)) {
-      this.box(g, ox0, ny0, o.x - half, ny1, kWallH, wallTop, wallFront, wallSide, o.x);
-      this.box(g, o.x + half, ny0, ox1, ny1, kWallH, wallTop, wallFront, wallSide, o.x);
-    } else this.box(g, ox0, ny0, ox1, ny1, kWallH, wallTop, wallFront, wallSide, o.x);
+      wall(ox0, ny0, o.x - half, ny1);
+      wall(o.x + half, ny0, ox1, ny1);
+    } else wall(ox0, ny0, ox1, ny1);
     // West and east walls.
     for (const d of [3, 1]) {
       const x0 = d === 3 ? o.x - kHx - kWallT : o.x + kHx;
       const x1 = x0 + kWallT;
       const y0 = o.y - kHy, y1 = o.y + kHy;
       if (hasDoor(d)) {
-        this.box(g, x0, y0, x1, o.y - half, kWallH, wallTop, wallFront, wallSide, o.x);
-        this.box(g, x0, o.y + half, x1, y1, kWallH, wallTop, wallFront, wallSide, o.x);
-      } else this.box(g, x0, y0, x1, y1, kWallH, wallTop, wallFront, wallSide, o.x);
+        wall(x0, y0, x1, o.y - half);
+        wall(x0, o.y + half, x1, y1);
+      } else wall(x0, y0, x1, y1);
     }
-    for (const p of sortedProps.filter((q) => q.y >= 0)) this.drawProp(g, p, o, prop, propDark);
+    if (art) {
+      this.drawTrim(m, o, k);
+      this.drawArtProps(m, o, k, sortedProps);
+    } else for (const p of sortedProps.filter((q) => q.y >= 0)) this.drawProp(p, o, prop, propDark);
     // South: a low curb so it never hides units at the bottom edge.
     const sy0 = o.y + kHy, sy1 = o.y + kHy + kWallT;
+    const curbBox = (x0: number, x1: number): void => {
+      if (art) this.boxTex(o, x0, sy0, x1, sy1, kCurbH, o.x, k, [0.75, 0.6, 0.5]);
+      else this.box(x0, sy0, x1, sy1, kCurbH, curb, curb, curb, o.x);
+    };
     if (hasDoor(2)) {
-      this.box(g, ox0, sy0, o.x - half, sy1, kCurbH, curb, curb, curb, o.x);
-      this.box(g, o.x + half, sy0, ox1, sy1, kCurbH, curb, curb, curb, o.x);
-    } else this.box(g, ox0, sy0, ox1, sy1, kCurbH, curb, curb, curb, o.x);
+      curbBox(ox0, o.x - half);
+      curbBox(o.x + half, ox1);
+    } else curbBox(ox0, ox1);
   }
 
-  private drawProp(g: Phaser.GameObjects.Graphics, p: Prop, o: { x: number; y: number }, top: number, side: number): void {
+  /** The rubble strip standing at the foot of the north, west and east walls (skipping doorways), to blend wall into floor. */
+  private drawTrim(m: Module, o: { x: number; y: number }, k: number): void {
+    const im = this.img(this.art!.trim);
+    const h = kTrimLen * (im.height / im.width);
+    const half = kDoorW / 2;
+    const down: Vec3 = { x: 0, y: 0, z: -1 };
+    const spans = (len: number, door: boolean): [number, number][] => (door ? [[0, len / 2 - half], [len / 2 + half, len]] : [[0, len]]);
+    const run = (origin: Vec3, axis: Vec3, len: number, door: boolean, shade: number): void => {
+      for (const [a, b] of spans(len, door)) this.plane(() => im, origin, axis, down, a, b, 0, h, kTrimLen, h, shade * k, kTrimLen);
+    };
+    const hasDoor = (d: number): boolean => ((m.doorMask >> d) & 1) === 1;
+    run({ x: o.x - kHx, y: o.y - kHy + kTrimInset, z: h }, { x: 1, y: 0, z: 0 }, 2 * kHx, hasDoor(0), 1);
+    run({ x: o.x - kHx + kTrimInset, y: o.y - kHy, z: h }, { x: 0, y: 1, z: 0 }, 2 * kHy, hasDoor(3), 0.85);
+    run({ x: o.x + kHx - kTrimInset, y: o.y - kHy, z: h }, { x: 0, y: 1, z: 0 }, 2 * kHy, hasDoor(1), 0.85);
+  }
+
+  /** Standing props as upright sprites (one picked per scattered spot, fixed per room), plus two torches on the far wall. */
+  private drawArtProps(m: Module, o: { x: number; y: number }, k: number, props: Prop[]): void {
+    const art = this.art!;
+    const upright = (key: string, height: number, x: number, y: number, z: number, shade: number): void => {
+      const im = this.img(key);
+      const w = height * (im.width / im.height);
+      this.plane(() => im, { x: x - w / 2, y, z: z + height }, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }, 0, w, 0, height, w, height, shade * k, 400);
+    };
+    if (art.torch) {
+      for (const side of [-1, 1]) upright(art.torch.key, art.torch.height, o.x + side * kHx * 0.5, o.y - kHy + 2, 90, 1);
+    }
+    const total = art.props.reduce((s, p) => s + p.weight, 0);
+    props.forEach((p) => {
+      let r = (hash3(m.node, Math.round(p.x), Math.round(p.y)) / 4294967296) * total;
+      let pick = art.props[0];
+      for (const q of art.props) { r -= q.weight; if (r < 0) { pick = q; break; } }
+      upright(pick.key, pick.height * (0.85 + 0.3 * (p.sz - 25) / 70), o.x + p.x, o.y + p.y, 0, 0.95);
+    });
+  }
+
+  private drawProp(p: Prop, o: { x: number; y: number }, top: number, side: number): void {
     const x = o.x + p.x, y = o.y + p.y;
     const c = Math.cos((p.yawDeg * Math.PI) / 180), s = Math.sin((p.yawDeg * Math.PI) / 180);
     const corner = (u: number, v: number, z: number): Vec3 => ({ x: x + u * c - v * s, y: y + u * s + v * c, z });
@@ -471,8 +603,19 @@ export class RoomView implements TransitionHook {
     // Two faces toward the camera, then the top.
     for (let i = 0; i < 4; ++i) {
       const a = base[i], b = base[(i + 1) % 4];
-      if ((a.y + b.y) / 2 - y > 0.01) this.quad(g, [a, b, { ...b, z: p.sz }, { ...a, z: p.sz }], side);   // faces the camera (+Y)
+      if ((a.y + b.y) / 2 - y > 0.01) this.quad([a, b, { ...b, z: p.sz }, { ...a, z: p.sz }], side);   // faces the camera (+Y)
     }
-    this.quad(g, topQ, top);
+    this.quad(topQ, top);
   }
+}
+
+/** A stable 32-bit hash of three integers (floor variant and prop picks). */
+function hash3(a: number, b: number, c: number): number {
+  let h = 2166136261 ^ (a | 0);
+  h = Math.imul(h ^ (b | 0), 16777619);
+  h = Math.imul(h ^ (c | 0), 16777619);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0x5bd1e995);
+  h ^= h >>> 15;
+  return h >>> 0;
 }

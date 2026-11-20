@@ -16,6 +16,7 @@ import { SlotStore, defaultSlotName, kSlotCount, kSlotsPerPage, type SlotInfo } 
 import { Music } from './music';
 import type { Params } from './params';
 import { RoomView } from './roomView';
+import { RoomCanvas } from './roomCanvas';
 import { UnitView, createGoblinAnims } from './unitView';
 
 export class RunScene extends Phaser.Scene {
@@ -23,7 +24,7 @@ export class RunScene extends Phaser.Scene {
   private room!: RoomView;
   private units!: UnitView;
   private hud!: Hud;
-  private roomG!: Phaser.GameObjects.Graphics;
+  private roomCanvas!: RoomCanvas;
   private unitTexts!: TextPool;
   private hudTexts!: TextPool;
   private overlay!: Overlay;
@@ -51,7 +52,8 @@ export class RunScene extends Phaser.Scene {
     this.rm = new RunManager(data, this.store, makeRunManagerOptions({ enemyMult: this.params.enemyMult, castTimes: this.params.castTimes }));
     this.room = new RoomView(this.rm);
     this.rm.setTransitionHook(this.room);
-    this.roomG = this.add.graphics().setDepth(0);
+    this.roomCanvas = new RoomCanvas(this, 0);
+    this.room.artImage = (key) => (this.textures.exists(key) ? this.textures.get(key).getSourceImage() as HTMLImageElement : undefined);
     this.unitTexts = new TextPool(this, 450, this.dprNow);
     this.hudTexts = new TextPool(this, 600, this.dprNow);
     this.units = new UnitView(this, this.rm, this.room, this.unitTexts, createGoblinAnims(this));
@@ -275,7 +277,7 @@ export class RunScene extends Phaser.Scene {
     this.room.syncToRun();
     this.room.update(dt);
     this.rm.tick(dt);
-    if (this.room.needsRedraw()) this.room.draw(this.roomG, area);
+    if (this.room.needsRedraw()) this.room.draw(this.roomCanvas, area, this.dprNow);
     this.units.update(dt, this.hud.scale, false);
     this.hud.draw();
     this.overlay.setArea(area);
