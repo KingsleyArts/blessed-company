@@ -13,6 +13,7 @@ import {
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, kBarFill, kBaseFontPx, kGold, kGoldDim, kPanelFill, kTextDim, kTextLight, lin, outline } from './draw';
 import type { RoomView } from './roomView';
+import { heroTuning } from './heroMotion';
 import { spriteTuning, type UnitView } from './unitView';
 
 export interface HudOptions { testing: boolean }
@@ -28,6 +29,7 @@ const kTune: TuneDef[] = [
   { name: 'Hurt sprite shows for (s)', step: 0.05, min: 0.05, max: 1.5, tab: 1 },
   { name: 'Hurt sprite cooldown (s between flinches)', step: 0.25, min: 0, max: 5, tab: 1 },
   { name: 'Enemy sprite size x', step: 0.05, min: 0.5, max: 2, tab: 1 },
+  { name: 'Party sprite size x', step: 0.05, min: 0.5, max: 2, tab: 0 },
 ];
 const kSpriteScaleBase = 1.15;
 
@@ -49,7 +51,7 @@ export class Hud {
   private flashRefused = false;
   private armed: MiracleKind | undefined;
   private tuneTab = 0;
-  private tuneValue = [1.3, 1, 1, 0.2, 1, 300, 0.3, 1, 1];
+  private tuneValue = [1.3, 1, 1, 0.2, 1, 300, 0.3, 1, 1, 1];
   private tuneTouched = false;
   private tuneInit = false;
   private resetArmedLeft = 0;
@@ -615,6 +617,7 @@ export class Hud {
     spriteTuning.hurtSeconds = this.tuneValue[6];
     spriteTuning.hurtCooldown = this.tuneValue[7];
     spriteTuning.scale = kSpriteScaleBase * this.tuneValue[8];
+    heroTuning.scale = this.tuneValue[9];
     const sim = this.sim();
     if (!sim) return;
     const c = sim.mutableConfig();
@@ -653,7 +656,7 @@ export class Hud {
       this.armed = undefined;
       this.rm.resetAllProgress();
     } else if (which === 'Reset') {
-      this.tuneValue = [this.rm.opts.enemyMult, 1, 1, defaultMiracle.fillPerHit, 1, defaultMiracle.smiteRadius, 0.3, 1, 1];
+      this.tuneValue = [this.rm.opts.enemyMult, 1, 1, defaultMiracle.fillPerHit, 1, defaultMiracle.smiteRadius, 0.3, 1, 1, 1];
       this.tuneTouched = true;
       this.tunePush();
       this.tuneTouched = false;

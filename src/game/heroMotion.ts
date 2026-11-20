@@ -19,6 +19,9 @@ export const kHeroMotion = {
   victoryHopUu: 22, victoryHz: 1.6,
 };
 
+/** Testing-only: the party sprite size multiplier from the pause menu's tuning panel (1 = kHeroMotion.uuPerPx). */
+export const heroTuning = { scale: 1 };
+
 /** What happened to one hero recently, as clocks counting up since each event (99 = long ago). */
 export interface HeroFx {
   lunge: number; lungeDir: number;

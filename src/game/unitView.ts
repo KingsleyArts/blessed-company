@@ -8,7 +8,7 @@ import { StatId } from '../core/statResolver';
 import { formatAmount } from '../core/uiText';
 import { fillFraction, floatAnimAt, jitter } from '../ui/hudLayout';
 import { TextPool, classColor, lin } from './draw';
-import { heroPose, heroTextureKey, kHeroMotion, kSpriteFacesLeft, newHeroFx, type HeroFx } from './heroMotion';
+import { heroPose, heroTextureKey, heroTuning, kHeroMotion, kSpriteFacesLeft, newHeroFx, type HeroFx } from './heroMotion';
 import type { RoomView } from './roomView';
 
 const kBodyXY = 1.7;
@@ -272,7 +272,7 @@ export class UnitView {
     }, fx);
     const foot = this.room.project(p.x + pose.dx, p.y, 0);
     const lifted = this.room.project(p.x + pose.dx, p.y, pose.lift);
-    const sc = kHeroMotion.uuPerPx * pxPerUu;
+    const sc = kHeroMotion.uuPerPx * heroTuning.scale * pxPerUu;
     // Shadow stays on the floor and shrinks a little as the hero rises.
     const g = v.gfx;
     const rx = 50 * kBodyXY * pxPerUu * (1 - Math.min(0.4, pose.lift / 120));
