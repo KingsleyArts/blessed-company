@@ -12,7 +12,7 @@ import {
   fillFraction, portraitAt, type Layout,
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, kBarFill, kBaseFontPx, kGold, kGoldDim, kPanelFill, kTextDim, kTextLight, lin, outline } from './draw';
-import type { RoomView } from './roomView';
+import { roomHaze, type RoomView } from './roomView';
 import { spriteSizes } from './heroMotion';
 import { loadTuning, saveTuning } from './localStore';
 import { spriteTuning, type UnitView } from './unitView';
@@ -35,8 +35,10 @@ const kTune: TuneDef[] = [
   ...['Warrior', 'Mage', 'Assassin', 'Priest', 'Grunt', 'Archer', 'Brute', 'Shaman'].map((n) => ({
     id: `size:${n}`, name: `${n === 'Priest' ? 'Priestess' : n} size x`, step: 0.05, min: 0.3, max: 3, tab: 2,
   })),
+  { id: 'hazeDepth', name: 'Room haze depth (share of view)', step: 0.02, min: 0, max: 0.5, tab: 2 },
+  { id: 'hazeAlpha', name: 'Room haze darkness at edge', step: 0.05, min: 0, max: 1, tab: 2 },
 ];
-const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites'];
+const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites and room'];
 
 type Hit = { rect: Rect; action: () => void; prio: number };
 
@@ -627,6 +629,9 @@ export class Hud {
     spriteSizes.enemy = this.tuneValue[8];
     spriteSizes.party = this.tuneValue[9];
     kTune.forEach((d, i) => { if (d.id.startsWith('size:')) spriteSizes.unit[d.id.slice(5)] = this.tuneValue[i]; });
+    roomHaze.depth = this.tuneValue[kTune.findIndex((d) => d.id === 'hazeDepth')];
+    roomHaze.alpha = this.tuneValue[kTune.findIndex((d) => d.id === 'hazeAlpha')];
+    this.room.redraw();
     const sim = this.sim();
     if (!sim) return;
     const c = sim.mutableConfig();
@@ -650,6 +655,8 @@ export class Hud {
         case 'gaugeFill': return defaultMiracle.fillPerHit;
         case 'smiteRadius': return defaultMiracle.smiteRadius;
         case 'hurtSeconds': return 0.3;
+        case 'hazeDepth': return kHazeDefault.depth;
+        case 'hazeAlpha': return kHazeDefault.alpha;
       }
       return 1;
     });
@@ -792,6 +799,8 @@ ${text}`);
 
 import { defaultMiracleConfig } from '../core/miracleGauge';
 const defaultMiracle = defaultMiracleConfig();
+/** The shipped room haze (the tuning menu changes roomHaze live). */
+const kHazeDefault = { ...roomHaze };
 
 /** The Priest class shows as "Priestess". */
 export const displayName = (cls: string): string => (cls === 'Priest' ? 'Priestess' : cls);

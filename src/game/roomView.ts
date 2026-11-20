@@ -29,9 +29,9 @@ const kWalkSpeed = 1000;
 const kPanSeconds = 0.75;
 // Neighbouring rooms are hidden (director, Nov 20: rooms framed in darkness; the next room shows only during the pan, fading in).
 const kDim = 0;
-/** The dark haze framing the room view: how deep it reaches in from each edge (fraction of the shorter side) and its strength. */
-const kHazeDepth = 0.16;
-const kHazeAlpha = 0.85;
+/** The dark haze framing the room view: how deep it reaches in from each edge (fraction of the shorter side) and its strength at the
+ *  edge. Mutable so the testing builds' tuning menu can change it live (director, Nov 20). */
+export const roomHaze = { depth: 0.16, alpha: 0.85 };
 const kFadeRate = 1.5;
 const kSlotSpacing = 110;
 const kWalkTimeout = 30;
@@ -76,6 +76,9 @@ export class RoomView implements TransitionHook {
   private lastArea = '';
 
   constructor(private readonly rm: RunManager) {}
+
+  /** Redraw on the next frame (a tuning value changed). */
+  redraw(): void { this.dirty = true; }
 
   isTransitioning(): boolean { return this.phase !== Phase.Idle; }
   /** Where staged enemies of the destination room stand, relative to the room at the origin. */
@@ -393,7 +396,7 @@ export class RoomView implements TransitionHook {
     // Far rooms first (north before south), so nearer walls cover farther floors.
     const mods = [...this.modules.values()].sort((a, b) => a.gy - b.gy || a.gx - b.gx);
     for (const m of mods) if (m.brightness > 0.01) this.drawModule(m);
-    rc.edgeHaze(area, Math.min(area.w, area.h) * kHazeDepth, kVoid, kHazeAlpha);
+    if (roomHaze.depth > 0 && roomHaze.alpha > 0) rc.edgeHaze(area, Math.min(area.w, area.h) * roomHaze.depth, kVoid, roomHaze.alpha);
     rc.end();
   }
 
