@@ -8,6 +8,7 @@ import { StatId } from '../core/statResolver';
 import { formatAmount } from '../core/uiText';
 import { fillFraction, floatAnimAt, jitter } from '../ui/hudLayout';
 import { TextPool, classColor, lin } from './draw';
+import { heroPose, heroTextureKey, kHeroMotion, kSpriteFacesLeft, newHeroFx, type HeroFx } from './heroMotion';
 import type { RoomView } from './roomView';
 
 const kBodyXY = 1.7;
@@ -37,6 +38,8 @@ const kAnimFps: Record<string, number> = { Idle: 2.5, Walk: 8, Attack: 6, Hurt: 
 interface Visual {
   gfx: Phaser.GameObjects.Graphics;
   sprite?: Phaser.GameObjects.Sprite;
+  /** A hero's chibi sprite (moved by heroMotion); without one the hero is a sphere. */
+  hero?: Phaser.GameObjects.Image;
   hurtClock: number;
   moveClock: number;
   lastX: number;
@@ -55,6 +58,10 @@ export class UnitView {
   private jitterCounter = 0;
   private subscribedSim: CombatSim | undefined;
   private overlay: Phaser.GameObjects.Graphics;
+  /** Recent hits, lunges and casts per hero unit id (reset with each new fight's sim). */
+  private fx = new Map<number, HeroFx>();
+  private clock = 0;
+  private readonly reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
   smiteFlash: { x: number; y: number; age: number } = { x: 0, y: 0, age: 99 };
   /** Set by the HUD while Smite is armed and the pointer is over the room: the ground point to ring. */
   smiteAim: { x: number; y: number } | undefined;
@@ -86,6 +93,34 @@ export class UnitView {
     if (this.subscribedSim === sim) return;
     this.subscribedSim = sim;
     this.entries = [];
+    this.fx.clear();
+    const heroFx = (id: number): HeroFx | undefined => {
+      const u = sim.getUnit(id);
+      if (!u || u.enemy || u.summon) return undefined;
+      let f = this.fx.get(id);
+      if (!f) this.fx.set(id, (f = newHeroFx()));
+      return f;
+    };
+    const dirFrom = (a: number, b: number): number => {
+      const ua = sim.getUnit(a), ub = sim.getUnit(b);
+      return ua && ub && ub.x < ua.x ? -1 : 1;
+    };
+    sim.getBus().subscribe('DamageDealt', (ev) => {
+      // A hero that lands a hit lunges toward the target; a hero that is hit flashes white and is pushed back.
+      const src = heroFx(ev.source);
+      if (src && ev.source !== ev.target) { src.lunge = 0; src.lungeDir = dirFrom(ev.source, ev.target); }
+      const dst = heroFx(ev.target);
+      if (dst && ev.amount > 0) {
+        dst.flash = 0;
+        dst.knock = 0;
+        dst.knockDir = -dirFrom(ev.target, ev.source);
+        const t = sim.getUnit(ev.target);
+        if (t && !this.reducedMotion && (ev.crit || ev.amount >= 0.15 * sim.maxHp(t))) this.scene.cameras.main.shake(110, 0.005);
+      }
+    });
+    sim.getBus().subscribe('HealApplied', (ev) => { const f = heroFx(ev.source); if (f) f.cast = 0; });
+    sim.getBus().subscribe('AbilityCast', (ev) => { const f = heroFx(ev.caster); if (f) f.cast = 0; });
+    sim.getBus().subscribe('UnitDied', (ev) => { const f = heroFx(ev.unit); if (f) f.ko = 0; });
     sim.getBus().subscribe('DamageDealt', (ev) => {
       const text = formatAmount(ev.amount, false, ev.crit);
       if (text === '') return;
@@ -111,6 +146,8 @@ export class UnitView {
   update(dt: number, scale: number, hideOverlays: boolean): void {
     const sim = this.rm.getSim();
     for (const v of this.visuals.values()) v.seen = false;
+    this.clock += dt;
+    for (const f of this.fx.values()) { f.lunge += dt; f.knock += dt; f.flash += dt; f.cast += dt; f.ko += dt; }
     this.overlay.clear();
     if (sim) {
       this.subscribe(sim);
@@ -123,6 +160,7 @@ export class UnitView {
       if (!v.seen) {
         v.gfx.destroy();
         v.sprite?.destroy();
+        v.hero?.destroy();
         this.visuals.delete(k);
       }
     }
@@ -140,6 +178,7 @@ export class UnitView {
     if (!v) {
       v = { gfx: this.scene.add.graphics(), hurtClock: 99, moveClock: 99, lastX: u.x, lastY: u.y, lastHp: u.hp, faceRight: !u.enemy, anim: '', seen: true };
       if (sprite) v.sprite = this.scene.add.sprite(0, 0, 'gob_13_Idle_R_1').setOrigin(0.5, 1);
+      if (party && this.scene.textures.exists(heroTextureKey(u.name))) v.hero = this.scene.add.image(0, 0, heroTextureKey(u.name)).setOrigin(0.5, 1);
       this.visuals.set(key, v);
     }
     v.seen = true;
@@ -180,6 +219,10 @@ export class UnitView {
       v.sprite.setPosition(foot.x, foot.y).setScale(spriteTuning.scale * pxPerUu).setDepth(depth);
       return;
     }
+    if (v.hero) {
+      this.drawHero(sim, u, v, v.hero, p, fill, pxPerUu, depth);
+      return;
+    }
     const zs = u.alive ? (party ? kRoundZ : kBodyZ) * (0.5 + 0.5 * fill) : 0.05;
     const hUu = 100 * zs;
     const r = 50 * kBodyXY;
@@ -215,6 +258,34 @@ export class UnitView {
     g.fillPoints([corner(-r, r, 0), corner(r, r, 0), corner(r, r, hUu), corner(-r, r, hUu)], true);
     g.fillStyle(c(1.15), 1);
     g.fillPoints([corner(-r, -r, hUu), corner(r, -r, hUu), corner(r, r, hUu), corner(-r, r, hUu)], true);
+  }
+
+  /** A hero as its chibi sprite, moved by heroMotion: bob, hop, lunge, flash, knock-back, cast glow, weak pulse, lying down when out. */
+  private drawHero(sim: CombatSim, u: Unit, v: Visual, img: Phaser.GameObjects.Image, p: { x: number; y: number }, fill: number,
+    pxPerUu: number, depth: number): void {
+    const fx = this.fx.get(u.id) ?? newHeroFx();
+    if (!u.alive && !this.fx.has(u.id)) fx.ko = 99;   // already down when first seen: no fall animation
+    const pose = heroPose({
+      time: this.clock + u.id * 0.37, alive: u.alive, moving: v.moveClock < kWalkHoldSeconds,
+      casting: u.castKind === CastKind.Ability || u.castKind === CastKind.AutoHeal, hpFraction: fill,
+      won: sim.getState() === FightState.Won, faceRight: v.faceRight,
+    }, fx);
+    const foot = this.room.project(p.x + pose.dx, p.y, 0);
+    const lifted = this.room.project(p.x + pose.dx, p.y, pose.lift);
+    const sc = kHeroMotion.uuPerPx * pxPerUu;
+    // Shadow stays on the floor and shrinks a little as the hero rises.
+    const g = v.gfx;
+    const rx = 50 * kBodyXY * pxPerUu * (1 - Math.min(0.4, pose.lift / 120));
+    g.fillStyle(0x000000, 0.35);
+    g.fillEllipse(foot.x, foot.y, rx * 2, rx * 0.7);
+    // Lying down turns about the sprite's middle, so lift it to sit on the floor.
+    const down = Math.abs(pose.angle) > 1;
+    img.setOrigin(0.5, down ? 0.5 : 1);
+    img.setPosition(lifted.x, down ? lifted.y - img.width * sc * 0.5 * Math.abs(Math.sin((pose.angle * Math.PI) / 180)) - (img.height * sc * 0.5) * Math.abs(Math.cos((pose.angle * Math.PI) / 180)) : lifted.y);
+    img.setScale(sc, sc * pose.scaleY).setAngle(pose.angle).setAlpha(pose.alpha).setDepth(depth);
+    img.setFlipX(kSpriteFacesLeft === v.faceRight);
+    if (pose.flash) img.setTintFill(0xffffff);
+    else img.setTint(pose.tint);
   }
 
   private drawOverlays(sim: CombatSim, scale: number): void {

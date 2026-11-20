@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { heroTextureKey, kHeroSpriteClasses } from './heroMotion';
 import { goblinFrames } from './unitView';
 
 /** Loads what exists of the optional art and music (public/assets/vendor, copied by `npm run assets`), then starts the run scene.
@@ -19,9 +20,16 @@ export class BootScene extends Phaser.Scene {
     for (const frames of Object.values(goblinFrames)) {
       for (const f of frames) this.load.image(`gob_${f}`, `${base}goblin_grunt/${f}.png`);
     }
+    for (const cls of kHeroSpriteClasses) {
+      this.load.image(heroTextureKey(cls), `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_sprite.png`);
+    }
   }
 
   create(): void {
+    // Pixel sprites stay crisp when scaled up.
+    for (const cls of kHeroSpriteClasses) {
+      if (this.textures.exists(heroTextureKey(cls))) this.textures.get(heroTextureKey(cls)).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
     this.scene.start('Run');
   }
 }
