@@ -17,6 +17,9 @@ export class Rng {
     this.state = u64(seed);
   }
 
+  /** The generator's state; `new Rng(getState())` continues the same sequence (run saves). */
+  getState(): bigint { return this.state; }
+
   nextU64(): bigint {
     this.state = (this.state + GAMMA) & MASK;
     let z = this.state;

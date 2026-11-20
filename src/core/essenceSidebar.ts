@@ -68,6 +68,14 @@ export class EssenceSidebar {
     this.chars = [];
     for (const c of party) this.addCharacter(c);
   }
+  /** Each character's bought ranks, for a run save (save slots, Nov 19). */
+  exportRanks(): { className: string; ranks: [string, number][] }[] {
+    return this.chars.map((c) => ({ className: c.className, ranks: [...c.ranks.entries()] }));
+  }
+  /** Restores exportRanks() output: the characters and their ranks replace the current ones. */
+  importRanks(list: readonly { className: string; ranks: readonly (readonly [string, number])[] }[]): void {
+    this.chars = list.map((c) => ({ className: c.className, ranks: new Map(c.ranks.map(([k, v]) => [k, v] as [string, number])) }));
+  }
   addCharacter(className: string): number {
     this.chars.push({ className, ranks: new Map() });
     return this.chars.length - 1;
