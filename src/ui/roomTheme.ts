@@ -27,7 +27,7 @@ export const kThemes: RoomTheme[] = [
   { name: 'Goblin Cave', base: [[0.30, 0.27, 0.22], [0.24, 0.22, 0.18], [0.20, 0.17, 0.15], [0.14, 0.12, 0.10], [0.16, 0.30, 0.12], [0.26, 0.23, 0.20]], propsPerRoom: 16,
     art: {
       floor: ['cave_floor_a', 'cave_floor_b', 'cave_floor_c'], floorWeights: [0.7, 0.2, 0.1],
-      wallTop: 'cave_wall_top', doorway: 'cave_doorway', trim: 'cave_trim',
+      wallTop: 'cave_wall_top', wallFace: 'cave_wall_face', doorway: 'cave_doorway', trim: 'cave_trim',
       props: [
         { key: 'cave_prop_boulder', height: 120, weight: 3 }, { key: 'cave_prop_rocks', height: 70, weight: 4 },
         { key: 'cave_prop_stalagmite', height: 170, weight: 2 }, { key: 'cave_prop_bones', height: 80, weight: 2 },

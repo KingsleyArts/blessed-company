@@ -454,14 +454,18 @@ export class RoomView implements TransitionHook {
     if (x1 - x0 <= 0 || y1 - y0 <= 0) return;
     const a = this.art!;
     const topImg = this.img(a.wallTop);
-    const faceImg = this.img(a.wallFace ?? a.wallTop);
     const one = (im: Img) => () => im;
     const T = kArtWorld;
+    // The wall face art (Nov 20) is drawn once from the top of a full-height wall to the floor, square, repeating sideways. Low boxes
+    // (the curb) and themes without face art use the wall-top texture on their faces.
+    const faceArt = a.wallFace !== undefined && h >= kWallH;
+    const faceImg = this.img(faceArt ? a.wallFace! : a.wallTop);
+    const F = faceArt ? h : T;
     const down: Vec3 = { x: 0, y: 0, z: -1 };
     const xf = cx > x1 ? x1 : cx < x0 ? x0 : undefined;
     // Faces and the thin tops bend little under this camera, so they are cut only at texture repeats.
-    if (xf !== undefined) this.plane(one(faceImg), { x: xf, y: o.y, z: h }, { x: 0, y: 1, z: 0 }, down, y0 - o.y, y1 - o.y, 0, h, T, T, shades[2] * k, T);
-    this.plane(one(faceImg), { x: o.x, y: y1, z: h }, { x: 1, y: 0, z: 0 }, down, x0 - o.x, x1 - o.x, 0, h, T, T, shades[1] * k, T);
+    if (xf !== undefined) this.plane(one(faceImg), { x: xf, y: o.y, z: h }, { x: 0, y: 1, z: 0 }, down, y0 - o.y, y1 - o.y, 0, h, F, F, shades[2] * k, T);
+    this.plane(one(faceImg), { x: o.x, y: y1, z: h }, { x: 1, y: 0, z: 0 }, down, x0 - o.x, x1 - o.x, 0, h, F, F, shades[1] * k, T);
     this.plane(one(topImg), { x: o.x, y: o.y, z: h }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, x0 - o.x, x1 - o.x, y0 - o.y, y1 - o.y, T, T, shades[0] * k, T);
   }
 
