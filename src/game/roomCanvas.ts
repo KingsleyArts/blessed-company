@@ -52,6 +52,25 @@ export class RoomCanvas {
     c.fill();
   }
 
+  /** Darkness framing the area: each edge fades from `color` at `alpha` to clear over `depth` CSS pixels (corners get both). */
+  edgeHaze(area: Rect, depth: number, color: number, alpha: number): void {
+    const c = this.ctx;
+    const r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255;
+    const edge = (x0: number, y0: number, x1: number, y1: number, rx: number, ry: number, rw: number, rh: number): void => {
+      const grad = c.createLinearGradient(x0, y0, x1, y1);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+      grad.addColorStop(0.45, `rgba(${r},${g},${b},${alpha * 0.4})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      c.fillStyle = grad;
+      c.fillRect(rx, ry, rw, rh);
+    };
+    const { x, y, w, h } = area;
+    edge(x, y, x, y + depth, x, y, w, depth);
+    edge(x, y + h, x, y + h - depth, x, y + h - depth, w, depth);
+    edge(x, y, x + depth, y, x, y, depth, h);
+    edge(x + w, y, x + w - depth, y, x + w - depth, y, depth, h);
+  }
+
   /** `img` darkened to `shade` (0 black .. 1 as drawn), from a cache of kShadeSteps levels. */
   shaded(img: Img, shade: number): Img {
     const s = Math.round(Math.min(1, Math.max(0, shade)) * kShadeSteps);

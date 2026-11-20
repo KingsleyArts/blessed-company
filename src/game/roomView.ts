@@ -27,7 +27,11 @@ const kPitchY = 2 * (kHy + kWallT);
 // ---- walk ----
 const kWalkSpeed = 1000;
 const kPanSeconds = 0.75;
-const kDim = 0.22;
+// Neighbouring rooms are hidden (director, Nov 20: rooms framed in darkness; the next room shows only during the pan, fading in).
+const kDim = 0;
+/** The dark haze framing the room view: how deep it reaches in from each edge (fraction of the shorter side) and its strength. */
+const kHazeDepth = 0.16;
+const kHazeAlpha = 0.85;
 const kFadeRate = 1.5;
 const kSlotSpacing = 110;
 const kWalkTimeout = 30;
@@ -389,6 +393,7 @@ export class RoomView implements TransitionHook {
     // Far rooms first (north before south), so nearer walls cover farther floors.
     const mods = [...this.modules.values()].sort((a, b) => a.gy - b.gy || a.gx - b.gx);
     for (const m of mods) if (m.brightness > 0.01) this.drawModule(m);
+    rc.edgeHaze(area, Math.min(area.w, area.h) * kHazeDepth, kVoid, kHazeAlpha);
     rc.end();
   }
 
