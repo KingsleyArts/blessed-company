@@ -166,13 +166,16 @@ const kCss = `
   align-items: start; font-size: clamp(12px, 2.3vh, 19px); }
 .hr-box { background: linear-gradient(180deg, rgba(64, 44, 74, 0.7), rgba(30, 18, 42, 0.85)); border: 1px solid var(--gold-dim);
   border-radius: 4px; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.3); }
-.hr-art { position: relative; aspect-ratio: 3 / 4; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+/* The art frame fills the panel's visible height (and stays in view while the other columns scroll). */
+.tp-scroll.heroes { container-type: size; }
+.hr-art { position: sticky; top: 0; height: max(140px, calc(100cqh - clamp(16px, 3.6vh, 36px) - clamp(18px, 4vh, 40px))); display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
   overflow: hidden; background: radial-gradient(ellipse at 50% 38%, rgba(255, 226, 160, 0.28), rgba(40, 20, 60, 0.2) 62%),
   linear-gradient(180deg, rgba(64, 44, 74, 0.7), rgba(30, 18, 42, 0.85)); }
-.hr-art .hr-tok { position: absolute; top: 18%; width: 52%; font-size: 3.4em; }
+.hr-art .fig { position: absolute; left: 0; right: 0; bottom: 5%; margin: auto; height: 90%; width: 100%; object-fit: contain;
+  object-position: 50% 100%; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55)); pointer-events: none; user-select: none; }
+.hr-art.locked .fig { filter: grayscale(0.85) brightness(0.6) drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55)); }
 .hr-art .ped { width: 78%; height: 12%; margin-bottom: 7%; border-radius: 50%; background: radial-gradient(ellipse, #6f5a8a, #2b1c3c 70%);
   border: 1px solid var(--gold-dim); }
-.hr-art .soon { position: absolute; bottom: 2%; font-size: 0.7em; color: #b8a98f; }
 .hr-tok { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border-radius: 50%; color: #fff8e6;
   font-weight: 700; border: 2px solid #f1d58c; box-shadow: 0 0 10px rgba(0, 0, 0, 0.6), inset 0 -0.15em 0.3em rgba(0, 0, 0, 0.35);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); line-height: 1; }
@@ -381,7 +384,7 @@ export function buildTemple(v: TempleView, a: TempleActions): BuiltTemple {
     for (let i = 0; i < 4; ++i) tools.appendChild(btn(`tp-amt${i === v.amountMode ? ' on' : ''}`, () => a.amount(i), amountLabel(i)));
     panel.appendChild(tools);
   }
-  const scroller = el('div', 'tp-scroll');
+  const scroller = el('div', `tp-scroll${wide ? ' heroes' : ''}`);
   scroller.appendChild(tabBody(v, a));
   panel.appendChild(scroller);
   const up = btn('tp-arrow up', () => scroller.scrollBy({ top: -scroller.clientHeight * 0.8, behavior: 'smooth' }), icon('up'));
@@ -417,14 +420,18 @@ function goButton(a: TempleActions, enabled: boolean): HTMLButtonElement {
   return b;
 }
 
-/** Placeholder portrait colours until the director's character art arrives. */
+/** The director's character art (Nov 19), cut from the character sheets: a face for the round portraits and the front view for the
+ *  large frame. The tint shows while an image loads. */
+const heroArt = (cls: string, part: 'face' | 'full'): string => `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_${part}.webp`;
+
 const kHeroTint: Record<string, string> = {
   Warrior: '#b8443c', Mage: '#4a62c9', Assassin: '#3f9a5c', Priest: '#c9ad3e', Barbarian: '#c0702e', Summoner: '#8a4fc0',
 };
 
 function token(h: { className: string; label: string }): HTMLElement {
-  const t = el('span', 'hr-tok', h.label.charAt(0));
-  t.style.background = `radial-gradient(circle at 40% 35%, ${kHeroTint[h.className] ?? '#777'}, #1c1226 120%)`;
+  const t = el('span', 'hr-tok');
+  t.style.background = `url("${heroArt(h.className, 'face')}") center / cover no-repeat, ${kHeroTint[h.className] ?? '#777'}`;
+  t.setAttribute('aria-hidden', 'true');
   return t;
 }
 
@@ -439,7 +446,12 @@ function heroesBody(v: TempleView, a: TempleActions): HTMLElement {
   const inParty = v.party.includes(h.className);
 
   const art = el('div', 'hr-box hr-art');
-  art.append(token(h), el('div', 'ped'), el('div', 'soon', 'Art coming soon'));
+  const fig = el('img', 'fig');
+  fig.src = heroArt(h.className, 'full');
+  fig.alt = h.label;
+  fig.draggable = false;
+  art.append(el('div', 'ped'), fig);
+  if (!h.owned) art.classList.add('locked');
 
   const card = el('div', 'hr-box hr-card');
   card.append(el('h2', '', h.label), el('div', 'hr-role', h.role), el('div', 'hr-cap', 'Base stats with Temple blessings and gear'));
