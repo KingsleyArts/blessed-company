@@ -86,8 +86,10 @@ const kCss = `
 .sv-line { display: flex; align-items: center; gap: 0.5em; color: #e9dfcc; white-space: nowrap; overflow: hidden; }
 .sv-line svg { width: 1.1em; height: 1.1em; flex: 0 0 auto; color: #e8c877; }
 .sv-line b { font-weight: normal; margin-left: 0.6em; }
-.sv-party { display: flex; gap: clamp(4px, 0.7vw, 10px); padding-left: clamp(8px, 1.4vw, 22px); border-left: 1px solid rgba(232, 200, 119, 0.35); height: min(82%, 4.9em); }
-.sv-face { height: 100%; aspect-ratio: 1; box-sizing: border-box; border: 2px solid #d8b468; border-radius: 6px; display: flex;
+/* Fixed tile size: a % height with aspect-ratio gave the tiles almost no width on iOS Safari, so they overlapped the button (Nov 19). */
+.sv-party { display: flex; align-items: center; gap: clamp(4px, 0.7vw, 10px); padding-left: clamp(8px, 1.4vw, 22px);
+  border-left: 1px solid rgba(232, 200, 119, 0.35); }
+.sv-face { flex: none; width: 2.8em; height: 2.8em; box-sizing: border-box; border: 2px solid #d8b468; border-radius: 6px; display: flex;
   align-items: center; justify-content: center; font-size: 1.6em; font-weight: 700; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
 .sv-face.none { background: rgba(20, 10, 34, 0.6); border-style: dashed; border-color: rgba(232, 200, 119, 0.4); }
 .sv-act { display: flex; align-items: center; justify-content: center; gap: 0.45em; font-size: 1.2em; min-width: 6.4em; color: #2a1608;
