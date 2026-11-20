@@ -49,6 +49,32 @@ export function enemyTypeName(t: EnemyType): string {
   return '?';
 }
 
+/** RunFlow's part of a run save (save slots, Nov 19): everything start() and the rooms since have changed. The floor itself is not
+ *  stored: it is generated again from the seed and floor number, then the fog and cleared rooms are put back. */
+export interface FlowCheckpoint {
+  seed: bigint;
+  floorNumber: number;
+  currentNode: number;
+  party: string[];
+  gold: number;
+  essence: number;
+  /** Visited and known (drawn) rooms, by node id. */
+  revealed: number[];
+  known: number[];
+  cleared: number[];
+  crystalFound: boolean;
+  bossKilled: boolean;
+  floorKills: number;
+  runKills: number;
+  roomsCleared: number;
+  priestRescued: boolean;
+  essenceEarned: number;
+  essenceSpent: number;
+  sidebar: { className: string; ranks: [string, number][] }[];
+  dungeonGear: [string, number][];
+  gearRng: bigint;
+}
+
 /** What the combat layer needs to run one fight room. */
 export interface FightSpec {
   nodeId: number;
@@ -182,6 +208,81 @@ export class RunFlow {
     this.pendingFight = false;
     this.resetFloorState();
     this.enterCurrent();
+  }
+
+  // ---- run saves ----
+  /** The run's state for a save. Meant for a safe moment (no fight running); see RunManager's checkpoints. */
+  checkpoint(): FlowCheckpoint {
+    const nodes = this.run.floor.nodes;
+    return {
+      seed: this.run.seed,
+      floorNumber: this.run.floorNumber,
+      currentNode: this.run.currentNode,
+      party: [...this.run.party],
+      gold: this.run.gold,
+      essence: this.run.essence,
+      revealed: nodes.filter((n) => n.revealed).map((n) => n.id),
+      known: nodes.filter((n) => n.known).map((n) => n.id),
+      cleared: nodes.filter((n) => this.isCleared(n.id)).map((n) => n.id),
+      crystalFound: this.crystalFound,
+      bossKilled: this.bossKilled,
+      floorKills: this.floorKills,
+      runKills: this.runKills,
+      roomsCleared: this.roomsCleared,
+      priestRescued: this.priestRescued,
+      essenceEarned: this.essenceEarned,
+      essenceSpent: this.essenceSpent,
+      sidebar: this.sidebar.exportRanks(),
+      dungeonGear: [...this.dungeonGear.entries()],
+      gearRng: this.gearRng.getState(),
+    };
+  }
+
+  /** Puts a saved run back (after the Essence context and Party Luck are set, as for start()). The floor is generated from the
+   *  seed; if the party stood in a fight room it had not cleared (a floor start), that room's fight is pending again.
+   *  Returns false, changing nothing, when the save does not fit the floor it generates. */
+  restore(cp: FlowCheckpoint): boolean {
+    if (cp.floorNumber < 1 || cp.party.length === 0) return false;
+    const floor = generate(cp.seed, cp.floorNumber, this.floorConfig(cp.party.includes(this.cfg.rescueClass)));
+    const n = floor.nodes.length;
+    const inRange = (ids: readonly number[]): boolean => ids.every((i) => Number.isInteger(i) && i >= 0 && i < n);
+    if (!Number.isInteger(cp.currentNode) || cp.currentNode < 0 || cp.currentNode >= n) return false;
+    if (!inRange(cp.revealed) || !inRange(cp.known) || !inRange(cp.cleared)) return false;
+    const run = this.run;
+    Object.assign(run, makeRunState());
+    run.seed = cp.seed;
+    run.floorNumber = cp.floorNumber;
+    run.floor = floor;
+    run.party = [...cp.party];
+    run.gold = cp.gold;
+    run.essence = cp.essence;
+    run.active = true;
+    for (const i of cp.revealed) floor.nodes[i].revealed = true;
+    for (const i of cp.known) floor.nodes[i].known = true;
+    run.currentNode = cp.currentNode;
+    revealNode(floor, run.currentNode);
+    this.results = makeRunResults();
+    this.results.seed = cp.seed;
+    this.results.outcome = RunOutcome.InProgress;
+    this.resetFloorState();
+    for (const i of cp.cleared) this.cleared[i] = 1;
+    this.crystalFound = cp.crystalFound;
+    this.bossKilled = cp.bossKilled;
+    this.floorKills = cp.floorKills;
+    this.runKills = cp.runKills;
+    this.roomsCleared = cp.roomsCleared;
+    this.unsavedGold = 0;
+    this.priestRescued = cp.priestRescued;
+    this.priestEvent = false;
+    this.essenceEarned = cp.essenceEarned;
+    this.essenceSpent = cp.essenceSpent;
+    this.sidebar.importRanks(cp.sidebar);
+    this.dungeonGear = new Map(cp.dungeonGear);
+    this.drops = [];
+    this.gearRng = new Rng(cp.gearRng);
+    this.pendingFight = false;
+    if (!this.isCleared(run.currentNode)) this.enterCurrent();
+    return true;
   }
 
   // ---- Essence sidebar ----

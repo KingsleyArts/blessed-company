@@ -4,6 +4,8 @@
 import type { TempleSnapshot } from '../core/runManager';
 import type { ResultLine } from '../core/uiText';
 import { buildTemple, buildTempleBackdrop, type TempleTab, type TempleView } from './temple';
+import { buildSaves, type SavesMode, type SavesView, type SlotCard } from './saves';
+import { buildTitle, type TitleView } from './title';
 
 const kCss = `
 .bc-dim { position: fixed; background: rgba(0,0,0,0.74); display: flex; align-items: center; justify-content: center;
@@ -58,14 +60,40 @@ export interface TempleHandlers {
   volume: (v: number) => void;
 }
 
+export interface TitleHandlers {
+  /** New Game would erase a save, so it asks for a second tap (unused with save slots: New Game takes a free slot). */
+  hasSave: () => boolean;
+  /** There is something to continue (Continue is dimmed otherwise). */
+  canContinue: () => boolean;
+  volume: () => number;
+  /** Start over: erase progress (when there was any) and open the Temple. */
+  newGame: () => void;
+  continue: () => void;
+  setVolume: (v: number) => void;
+}
+
+export interface SavesHandlers {
+  slotCount: number;
+  perPage: number;
+  /** The cards for these slots (undefined = empty). */
+  cards: (slots: number[]) => { slot: number; card: SlotCard | undefined }[];
+  load: (slot: number) => void;
+  newGame: (slot: number) => void;
+  /** Replace mode: erase this slot and start a new game in it. */
+  replace: (slot: number) => void;
+  erase: (slot: number) => void;
+  rename: (slot: number, name: string) => void;
+  back: () => void;
+}
+
 export class Overlay {
   private root: HTMLElement;
   private current: HTMLElement | undefined;
   private area: Area = { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
   private resetArmedUntil = 0;
   private resetTimer = 0;
-  /** What is up: none, the run-over card, or the Temple. */
-  kind: 'none' | 'results' | 'temple' = 'none';
+  /** What is up: none, the title screen, the run-over card, or the Temple. */
+  kind: 'none' | 'title' | 'saves' | 'results' | 'temple' = 'none';
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -174,6 +202,118 @@ export class Overlay {
     built.scroller.scrollTop = scroll;
     built.refreshArrows();
   }
+
+  /** The title screen (director's art, Nov 19): the first screen when the game opens. */
+  showTitle(h: TitleHandlers): void {
+    this.titleHandlers = h;
+    this.titlePanel = 'none';
+    this.newGameArmedUntil = 0;
+    this.renderTitle();
+  }
+
+  private renderTitle(): void {
+    const h = this.titleHandlers;
+    if (!h) return;
+    const view: TitleView = { canContinue: h.canContinue(), newGameArmed: performance.now() < this.newGameArmedUntil, volume: h.volume(), panel: this.titlePanel };
+    const node = buildTitle(view, {
+      newGame: () => {
+        // Over a save, the first tap only warns; a second tap within 4 s erases it (like Reset progress in the Temple).
+        if (h.hasSave() && performance.now() >= this.newGameArmedUntil) {
+          this.newGameArmedUntil = performance.now() + 4000;
+          window.clearTimeout(this.newGameTimer);
+          this.newGameTimer = window.setTimeout(() => { if (this.kind === 'title') this.renderTitle(); }, 4050);
+          this.renderTitle();
+          return;
+        }
+        this.newGameArmedUntil = 0;
+        h.newGame();
+      },
+      continue: () => h.continue(),
+      settings: () => { this.titlePanel = 'settings'; this.renderTitle(); },
+      quit: () => { this.titlePanel = 'quit'; this.renderTitle(); },
+      closePanel: () => { this.titlePanel = 'none'; this.renderTitle(); },
+      volume: (v) => h.setVolume(v),
+    }, `${import.meta.env.BASE_URL}assets/ui/title_bg.webp`);
+    this.current?.remove();
+    this.dropBackdrop();
+    this.current = node;
+    this.kind = 'title';
+    this.root.appendChild(node);
+  }
+
+  /** The Load Save Data screen (director's mockup, Nov 19). `replace`: every slot is full and New Game must pick one to replace. */
+  showSaves(h: SavesHandlers, mode: 'load' | 'replace', page = 0): void {
+    this.savesHandlers = h;
+    this.savesMode = mode;
+    this.savesPage = Math.min(Math.max(0, page), Math.ceil(h.slotCount / h.perPage) - 1);
+    this.savesArmed = -1;
+    this.savesEditing = -1;
+    this.renderSaves();
+  }
+
+  private renderSaves(): void {
+    const h = this.savesHandlers;
+    if (!h) return;
+    const first = this.savesPage * h.perPage;
+    const slots: number[] = [];
+    for (let i = first; i < Math.min(h.slotCount, first + h.perPage); ++i) slots.push(i);
+    const view: SavesView = {
+      mode: this.savesMode, page: this.savesPage, pageCount: Math.ceil(h.slotCount / h.perPage), cards: h.cards(slots),
+      armedSlot: this.savesArmed, editingSlot: this.savesEditing,
+    };
+    const disarmLater = (): void => {
+      window.clearTimeout(this.savesTimer);
+      this.savesTimer = window.setTimeout(() => {
+        if (this.kind === 'saves' && this.savesArmed >= 0) { this.savesArmed = -1; this.renderSaves(); }
+      }, 4000);
+    };
+    const node = buildSaves(view, {
+      load: (slot) => h.load(slot),
+      newGame: (slot) => h.newGame(slot),
+      pressSlot: (slot) => {
+        if (this.savesArmed !== slot) {   // first tap arms; a second tap within 4 s confirms
+          this.savesArmed = slot;
+          disarmLater();
+          this.renderSaves();
+          return;
+        }
+        this.savesArmed = -1;
+        if (this.savesMode === 'replace') { h.replace(slot); return; }
+        h.erase(slot);
+        this.renderSaves();
+      },
+      rename: (slot) => { this.savesEditing = slot; this.renderSaves(); },
+      commitName: (slot, name) => {
+        this.savesEditing = -1;
+        if (name !== undefined && name.trim() !== '') h.rename(slot, name.trim().slice(0, 24));
+        if (this.kind === 'saves') this.renderSaves();
+      },
+      page: (p) => { this.savesPage = p; this.savesArmed = -1; this.savesEditing = -1; this.renderSaves(); },
+      back: () => h.back(),
+      toggleDelete: () => {
+        this.savesMode = this.savesMode === 'delete' ? 'load' : 'delete';
+        this.savesArmed = -1;
+        this.renderSaves();
+      },
+    }, `${import.meta.env.BASE_URL}assets/ui/title_bg.webp`);
+    this.current?.remove();
+    this.dropBackdrop();
+    this.current = node;
+    this.kind = 'saves';
+    this.root.appendChild(node);
+  }
+
+  private savesHandlers: SavesHandlers | undefined;
+  private savesMode: SavesMode = 'load';
+  private savesPage = 0;
+  private savesArmed = -1;
+  private savesEditing = -1;
+  private savesTimer = 0;
+
+  private titleHandlers: TitleHandlers | undefined;
+  private titlePanel: TitleView['panel'] = 'none';
+  private newGameArmedUntil = 0;
+  private newGameTimer = 0;
 
   private templeTab: TempleTab = 'blessings';
   private shownTab: TempleTab | undefined;

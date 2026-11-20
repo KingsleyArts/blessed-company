@@ -48,6 +48,8 @@ export class MiracleGauge {
   /** The tuning menu. */
   mutableConfig(): MiracleConfig { return this.cfg; }
   reset(): void { this.v = 0; }
+  /** A resumed run (save slots, Nov 19): put the gauge back where it was, kept inside 0..capacity. */
+  restore(v: number): void { this.v = Number.isFinite(v) ? Math.min(this.cfg.capacity, Math.max(0, v)) : 0; }
   addHit(): void { this.add(this.cfg.fillPerHit); }
   addHeal(): void { this.add(this.cfg.fillPerHeal); }
   add(amount: number): void { if (amount > 0) this.v = Math.min(this.cfg.capacity, this.v + amount); }

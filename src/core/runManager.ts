@@ -22,6 +22,7 @@ import { RosterResult, activeParty, kActiveSlots, rosterIsActive, rosterOwns, ro
 import { RunBot } from './runBot';
 import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, runOutcomeName, type RoomEntry, type RunResults } from './runFlow';
 import { buildMapView, type MapView } from './runMapView';
+import { parseRunSave, serializeRunSave } from './runSave';
 import { exitRoomRevive, partyHpFraction } from './runSim';
 import { ModKind, ModSource } from './statResolver';
 import {
@@ -33,6 +34,8 @@ import { formatBonus, formatRawBonus, templeLuckLabel, templeStatLabel } from '.
 /** Why the run changed (ETolRunChange). Read the snapshots again after any of them. */
 export enum RunChange {
   RunStarted, RoomChanged, MapChanged, FightStarted, FightFinished, FloorChanged, AutoChanged, RunEnded, EssenceChanged, MetaChanged,
+  /** A new run save is ready (getRunSave()), or the run ended and there is none: write it to storage. */
+  RunSaved,
 }
 
 /** Where the saved meta lives (FTolMetaStore). */
@@ -198,6 +201,8 @@ export class RunManager {
   readonly despawnedParty = new Set<string>();
   /** Heroes given Divine Shield between fights: the shield is kept through PrepareNextFight and starts with the next fight. */
   private readonly heldShields = new Set<string>();
+  /** The latest run save (runSave.ts), taken at the last safe moment; undefined with no run. */
+  private runSaveText: string | undefined;
   /** ClearNonPartyActors ran: the finished fight's enemy bodies stay behind in the room the party left. */
   bodiesCleared = false;
   /** The sim the kill payout listens to. */
@@ -460,7 +465,79 @@ export class RunManager {
     this.syncMeta();
     this.notify(RunChange.RunStarted);
     this.notify(RunChange.MapChanged);
-    return this.startPendingFight();
+    const started = this.startPendingFight();
+    // The run's first save: the start room's fight is pending again on a resume, the party at full health (no units saved).
+    this.takeRunSave(false);
+    return started;
+  }
+
+  // ------------------------------------------------------------------------------------------ run saves (director, Nov 19)
+  /** The latest run save text (write it to storage on RunChange.RunSaved); undefined when no run is in progress. */
+  getRunSave(): string | undefined { return this.runSaveText; }
+
+  /** Saves the run as it stands. Only called at safe moments: run or floor start, a room entered without a fight, a fight won. */
+  private takeRunSave(withUnits: boolean): void {
+    if (!this.flow.active()) return;
+    const units = [];
+    if (withUnits && this.sim) {
+      for (const u of this.sim.getUnits()) if (!u.enemy && !u.summon && !u.removed) units.push({ name: u.name, hp: u.hp, alive: u.alive });
+    }
+    const gauge = withUnits && this.sim ? this.sim.getGauge().value() : 0;
+    this.runSaveText = serializeRunSave({ flow: this.flow.checkpoint(), units, gauge });
+    this.notify(RunChange.RunSaved);
+  }
+
+  /** Continues a saved run (Continue on the title screen). The floor is rebuilt from the seed; the party stands in the room it was
+   *  saved in, with the health it had; a fight room that was not cleared starts its fight. Returns false for a damaged save. */
+  resumeRun(text: string | undefined): boolean {
+    const cp = parseRunSave(text);
+    if (!cp) return false;
+    this.stopTimers();
+    this.cancelTransition();
+    this.ensureMetaLoaded();
+    this.playSpeed = Math.max(1, this.meta.defaultSpeed);
+    const flow = new RunFlow();
+    this.flow = flow;
+    this.applyMetaToFlow();
+    flow.setPriestOwned(this.meta.priestUnlocked);
+    if (!flow.restore(cp.flow)) {
+      this.flow = new RunFlow();
+      return false;
+    }
+    this.bot = new RunBot(Number(cp.flow.seed % 2n ** 52n) || 1);
+    this.auto = false;
+    this.inFirstFight = false;
+    this.despawnedParty.clear();
+    this.heldShields.clear();
+    // A fresh sim with the party standing in the room (no fight yet), as the first fight would make it.
+    const sim = new CombatSim(this.data, (cp.flow.seed ^ 0x9e3779b97f4a7c15n) & 0xffffffffffffffffn, this.combatConfig());
+    this.entryDoor = -1;
+    sim.setPartyEntry(-1);
+    for (const c of flow.getRun().party) sim.addPartyUnit(c);
+    this.sim = sim;
+    ++this.fightSerial;
+    this.staged = false;
+    this.finishHandled = true;
+    this.pushEssenceToSim();
+    for (const u of sim.getUnits()) {
+      if (u.enemy || u.summon) continue;
+      const s = cp.units.find((x) => x.name === u.name);
+      if (!s) continue;
+      if (s.alive) {
+        u.hp = Math.max(1, s.hp);
+      } else {
+        u.hp = 0;
+        u.alive = false;
+        this.despawnedParty.add(u.name);
+      }
+    }
+    sim.getGauge().restore(cp.gauge);
+    this.runSaveText = text;
+    this.syncMeta();
+    this.notify(RunChange.RunStarted);
+    this.notify(RunChange.MapChanged);
+    if (flow.fightPending()) this.startPendingFight();
+    return true;
   }
 
   private stopTimers(): void { this.stepTimer = undefined; }
@@ -685,6 +762,7 @@ export class RunManager {
       default:
         break;
     }
+    if (entry.kind !== EntryKind.Fight) this.takeRunSave(true);
   }
 
   private doTeleport(): boolean {
@@ -699,6 +777,7 @@ export class RunManager {
     this.notify(RunChange.RoomChanged);
     this.notify(RunChange.MapChanged);
     this.setPartyEntry(-1);   // the new floor's start room has no entry door
+    this.takeRunSave(true);   // the floor's start: a resume starts this room's fight again
     this.startPendingFight();
     return true;
   }
@@ -731,6 +810,7 @@ export class RunManager {
       this.finishRun();
       return;
     }
+    this.takeRunSave(true);
     if (this.auto) this.scheduleStep(Math.min(2, Math.max(0.25, 2 / this.playSpeed)));
   }
 
@@ -738,6 +818,8 @@ export class RunManager {
     const r = this.flow.getResults();
     if (r.floorReached > this.meta.bestFloor) this.meta.bestFloor = r.floorReached;
     this.saveMeta();
+    this.runSaveText = undefined;   // an ended run has nothing to continue
+    this.notify(RunChange.RunSaved);
     this.notify(RunChange.RunEnded);
     if (this.auto) {
       this.auto = false;
@@ -967,6 +1049,14 @@ export class RunManager {
     this.saveMeta();
     this.notify(RunChange.MetaChanged);
     return this.startNewRun();
+  }
+
+  /** Save slots (Nov 19): the store now reads another slot, so read its progress again. Call with no run in progress. */
+  reloadMeta(): void {
+    this.metaLoaded = false;
+    this.ensureMetaLoaded();
+    this.runSaveText = undefined;
+    this.notify(RunChange.MetaChanged);
   }
 
   /** Testing builds: wipes all saved progress without starting a run (the Temple stays up). */
