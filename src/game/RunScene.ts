@@ -222,6 +222,10 @@ export class RunScene extends Phaser.Scene {
         this.settings.volume = v;
         saveSettings(this.settings);
       },
+      heroes: () => this.rm.getHeroes(),
+      party: () => this.rm.getParty(),
+      setParty: (list) => this.rm.setParty(list),
+      autoParty: () => this.rm.autoParty(),
     });
   }
 

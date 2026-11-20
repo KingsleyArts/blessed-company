@@ -23,6 +23,7 @@ import { RunBot } from './runBot';
 import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, runOutcomeName, type RoomEntry, type RunResults } from './runFlow';
 import { buildMapView, type MapView } from './runMapView';
 import { parseRunSave, serializeRunSave } from './runSave';
+import { heroLabel, heroSkills, heroStatLines, kHeroOrder, roleLabel, rolePriority, type HeroSheet } from './heroSheet';
 import { exitRoomRevive, partyHpFraction } from './runSim';
 import { ModKind, ModSource } from './statResolver';
 import {
@@ -286,10 +287,10 @@ export class RunManager {
     }
   }
 
-  private applyMetaToFlow(): void {
-    this.flow.setEssenceContext(this.meta.unlockedStats, new Map());
-    this.flow.setTempleLevels(this.meta.statLevels);
-    this.flow.setPartyLuck({
+  private applyMetaToFlow(flow: RunFlow = this.flow): void {
+    flow.setEssenceContext(this.meta.unlockedStats, new Map());
+    flow.setTempleLevels(this.meta.statLevels);
+    flow.setPartyLuck({
       essencePerKill: partyLuckBonus(this.meta, 'EssencePerKill'),
       essencePerRoom: partyLuckBonus(this.meta, 'EssencePerRoom'),
       goldPerKill: partyLuckBonus(this.meta, 'GoldPerKill'),
@@ -1057,6 +1058,63 @@ export class RunManager {
     this.ensureMetaLoaded();
     this.runSaveText = undefined;
     this.notify(RunChange.MetaChanged);
+  }
+
+  // ------------------------------------------------------------------------------------------ Heroes screen (Nov 19)
+  /** Every hero with its fight-start stats (class base + Temple blessings + Temple gear; no in-run Essence). Each hero is built as a
+   *  party unit in a throwaway sim, through the same EssenceApply and GearApply calls a fight uses. */
+  getHeroes(): HeroSheet[] {
+    this.ensureMetaLoaded();
+    const flow = new RunFlow();
+    this.applyMetaToFlow(flow);
+    const side = flow.getSidebar();
+    const out: HeroSheet[] = [];
+    for (const cls of kHeroOrder) {
+      const row = this.data.findClassRow(cls);
+      if (!row) continue;
+      const sim = new CombatSim(this.data, 1, this.combatConfig());
+      const id = sim.addPartyUnit(cls);
+      side.reset([cls]);
+      applyEssenceToSim(sim, side);
+      applyGearToSim(sim, this.meta, new Map());
+      const u = sim.getUnit(id);
+      if (!u) continue;
+      const roster = cls === rosterPriestClass() || cls === 'Warrior' || cls === 'Mage' || cls === 'Assassin';
+      const owned = rosterOwns(this.meta, cls);
+      out.push({
+        className: cls, label: heroLabel(cls), role: roleLabel(row.RoleTag), owned, active: owned && rosterIsActive(this.meta, cls),
+        note: owned ? '' : cls === rosterPriestClass() ? 'Rescue her on floor 2' : roster ? 'Not owned yet' : 'Cannot be recruited yet',
+        stats: heroStatLines(u.stats, (stat) => side.isUnlocked(stat)),
+        skills: heroSkills(row),
+      });
+    }
+    return out;
+  }
+
+  /** Sets the next expedition's party: 1 to 3 owned heroes, no repeats. Returns false (nothing changes) otherwise. */
+  setParty(heroes: readonly string[]): boolean {
+    if (this.flow.active()) return false;
+    this.ensureMetaLoaded();
+    if (heroes.length < 1 || heroes.length > kActiveSlots || new Set(heroes).size !== heroes.length) return false;
+    if (!heroes.every((h) => rosterOwns(this.meta, h))) return false;
+    this.meta.activeParty = [...heroes];
+    this.saveMeta();
+    this.notify(RunChange.MetaChanged);
+    return true;
+  }
+
+  /** The next expedition's party in slot order (what the Heroes screen's party bar shows). */
+  getParty(): string[] {
+    this.ensureMetaLoaded();
+    return activeParty(this.meta);
+  }
+
+  /** Auto Party: the owned heroes in role order (a tank, a healer, then damage), up to 3. */
+  autoParty(): string[] {
+    this.ensureMetaLoaded();
+    const owned = kHeroOrder.filter((h) => rosterOwns(this.meta, h));
+    const role = (h: string): number => rolePriority(this.data.findClassRow(h)?.RoleTag ?? '');
+    return [...owned].sort((a, b) => role(a) - role(b) || kHeroOrder.indexOf(a as never) - kHeroOrder.indexOf(b as never)).slice(0, kActiveSlots);
   }
 
   /** Testing builds: wipes all saved progress without starting a run (the Temple stays up). */

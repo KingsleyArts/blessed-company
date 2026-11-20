@@ -1,6 +1,8 @@
 // The Temple home screen (director's mockup, Nov 19): a full-screen page over the temple background with the title, the currencies,
 // a tab list on the left, one framed panel that scrolls (arrows show when there is more above or below), and Begin Expedition.
-// Built with DOM calls only, never innerHTML with game text.
+// The Heroes tab (director's mockup, Nov 19) is wider: the whole page slides left over the priestess, and a party bar replaces the
+// footer. Built with DOM calls only, never innerHTML with game text.
+import type { HeroSheet } from '../core/heroSheet';
 import type { TempleItem, TempleSnapshot } from '../core/runManager';
 import { amountLabel, formatCount, type ResultLine } from '../core/uiText';
 
@@ -16,6 +18,13 @@ export interface TempleView {
   report: { victory: boolean; lines: ResultLine[] } | undefined;
   tab: TempleTab;
   resetArmed: boolean;
+  /** Heroes tab: every hero's sheet (empty on other tabs), the hero shown in the stats card, and the party in the bar (empty while
+   *  the player rebuilds it after Clear Party). */
+  heroes: HeroSheet[];
+  heroPick: string;
+  party: string[];
+  /** The page drawn before this one was the wide Heroes layout, so a change of layout slides instead of jumping. */
+  wasWide: boolean;
 }
 
 export interface TempleActions {
@@ -25,6 +34,11 @@ export interface TempleActions {
   reset: () => void;
   volume: (v: number) => void;
   tab: (t: TempleTab) => void;
+  pickHero: (cls: string) => void;
+  /** Adds the hero to the party, or removes it. */
+  toggleHero: (cls: string) => void;
+  autoParty: () => void;
+  clearParty: () => void;
 }
 
 const kCss = `
@@ -122,9 +136,6 @@ const kCss = `
 .tp-card .cost svg { width: 1.05em; height: 1.05em; color: #ffd36b; fill: #ffd36b; }
 .tp-card:not(.buy) .cost { color: #a39a90; } .tp-card:not(.buy) .cost svg { color: #8d8478; fill: #8d8478; }
 .tp-card.max .cost { color: #b9f0b0; }
-.tp-card.hero.on { border-color: #9be39b; background: linear-gradient(180deg, rgba(48, 78, 52, 0.92), rgba(28, 48, 32, 0.95)); cursor: pointer; }
-.tp-card.hero.owned { cursor: pointer; }
-.tp-card.hero.locked { opacity: 0.75; }
 .tp-rows { max-width: 34em; }
 .tp-row { display: flex; justify-content: space-between; gap: 24px; font-size: clamp(13px, 2.4vh, 21px); padding: 3px 0; color: #d6cbbd;
   border-bottom: 1px solid rgba(232, 200, 119, 0.18); }
@@ -146,6 +157,72 @@ const kCss = `
 .tp-go:hover { filter: drop-shadow(0 0 16px rgba(255, 220, 140, 0.8)) brightness(1.06); }
 .tp-go svg { width: 1.1em; height: 1.1em; color: #5a2f8a; stroke-width: 2.2; }
 .tp-go .chev { font-size: 1.1em; line-height: 1; }
+/* Heroes tab: the empty first column closes so the larger frame fits, and the party bar takes the footer row (director, Nov 19). */
+.tp-root { transition: grid-template-columns 0.38s ease, grid-template-rows 0.38s ease; }
+.tp-root.wide { --foot: clamp(62px, 21vh, 190px); grid-template-columns: 0px var(--nav) minmax(0, 1fr); }
+.tp-root.wide .tp-nav { grid-row: 2; }
+@media (prefers-reduced-motion: reduce) { .tp-root { transition: none; } }
+.hr-wrap { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: clamp(8px, 1.4vw, 22px);
+  align-items: start; font-size: clamp(12px, 2.3vh, 19px); }
+.hr-box { background: linear-gradient(180deg, rgba(64, 44, 74, 0.7), rgba(30, 18, 42, 0.85)); border: 1px solid var(--gold-dim);
+  border-radius: 4px; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.3); }
+.hr-art { position: relative; aspect-ratio: 3 / 4; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  overflow: hidden; background: radial-gradient(ellipse at 50% 38%, rgba(255, 226, 160, 0.28), rgba(40, 20, 60, 0.2) 62%),
+  linear-gradient(180deg, rgba(64, 44, 74, 0.7), rgba(30, 18, 42, 0.85)); }
+.hr-art .hr-tok { position: absolute; top: 18%; width: 52%; font-size: 3.4em; }
+.hr-art .ped { width: 78%; height: 12%; margin-bottom: 7%; border-radius: 50%; background: radial-gradient(ellipse, #6f5a8a, #2b1c3c 70%);
+  border: 1px solid var(--gold-dim); }
+.hr-art .soon { position: absolute; bottom: 2%; font-size: 0.7em; color: #b8a98f; }
+.hr-tok { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border-radius: 50%; color: #fff8e6;
+  font-weight: 700; border: 2px solid #f1d58c; box-shadow: 0 0 10px rgba(0, 0, 0, 0.6), inset 0 -0.15em 0.3em rgba(0, 0, 0, 0.35);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); line-height: 1; }
+.hr-card { padding: 0.6em 0.8em; display: flex; flex-direction: column; gap: 0.25em; }
+.hr-card h2 { margin: 0; font-size: 1.5em; font-style: italic; color: #fbf3df; line-height: 1.1; }
+.hr-role { color: #e7d6ae; font-size: 0.9em; }
+.hr-cap { color: #b8a98f; font-size: 0.72em; border-bottom: 1px solid var(--gold-dim); padding-bottom: 0.3em; margin-bottom: 0.1em; }
+.hr-stat { display: grid; grid-template-columns: 1.3em minmax(0, 1fr) auto; align-items: center; gap: 0.5em; padding: 0.12em 0;
+  border-bottom: 1px solid rgba(232, 200, 119, 0.14); }
+.hr-stat svg { width: 1.2em; height: 1.2em; color: #e8c877; }
+.hr-stat .v { color: #fbf3df; } .hr-stat.locked .v { color: #8f8578; font-style: italic; }
+.hr-card h4, .hr-list h4 { margin: 0.45em 0 0.1em; font-size: 0.85em; font-weight: 400; letter-spacing: 0.06em; color: #d9c9a6; }
+.hr-skill { font-size: 0.82em; line-height: 1.25; padding: 0.15em 0; }
+.hr-skill b { color: #fbf3df; font-weight: 700; } .hr-skill .k { color: #c9b27a; font-size: 0.85em; margin-left: 0.4em; }
+.hr-skill div { color: #d6cbbd; }
+.hr-act { align-self: stretch; margin-top: 0.5em; font-size: 1em; padding: 0.35em 0.8em; cursor: pointer; color: #2a1608; border: 1px solid #fbe3a0;
+  border-radius: 3px; background: linear-gradient(180deg, #fff4cc, #ecc672 55%, #b98a35); }
+.hr-act.rem { color: #fbe9e4; background: #4f2a3a; border-color: #e0a0a0; }
+.hr-act:disabled { cursor: default; color: #a39a90; background: rgba(50, 36, 60, 0.9); border-color: var(--gold-dim); }
+.hr-list { padding: 0.2em 0.6em 0.6em; }
+.hr-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5em; }
+.hr-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.25em; padding: 0.4em 0.2em 0.3em; margin: 0;
+  font-size: 0.85em; color: #f3ecdf; cursor: pointer; background: rgba(40, 24, 54, 0.85); border: 1px solid var(--gold-dim); border-radius: 4px; }
+.hr-tile .hr-tok { width: 72%; font-size: 1.5em; }
+.hr-tile .nm { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hr-tile.on { border: 2px solid var(--gold); box-shadow: 0 0 10px rgba(255, 220, 150, 0.5); background: rgba(80, 56, 96, 0.9); }
+.hr-tile.locked .hr-tok { filter: grayscale(1) brightness(0.55); } .hr-tile.locked .nm { color: #9a9086; }
+.hr-tile .lk { position: absolute; top: 30%; width: 1.6em; height: 1.6em; color: #e8dcc0; }
+.hr-tile .in { position: absolute; top: 0.2em; right: 0.25em; min-width: 1.3em; height: 1.3em; border-radius: 50%; font-size: 0.8em;
+  display: flex; align-items: center; justify-content: center; color: #2a1608; background: #ecc672; border: 1px solid #fbe3a0; }
+.tp-party { grid-column: 2 / -1; grid-row: 3; display: flex; align-items: center; gap: clamp(8px, 1.6vw, 26px); min-height: 0; box-sizing: border-box;
+  margin-top: clamp(4px, 1.2vh, 12px); padding: clamp(3px, 0.8vh, 10px) clamp(8px, 1.4vw, 22px); font-size: clamp(11px, 2.2vh, 19px);
+  background: rgba(30, 15, 46, 0.88); border: 2px solid #c9a55a; border-radius: 4px;
+  box-shadow: inset 0 0 0 3px rgba(30, 15, 46, 0.9), inset 0 0 0 4px var(--gold-dim), 0 6px 22px rgba(0, 0, 0, 0.5); }
+.pt-words { min-width: 0; flex: 0 1 auto; }
+.pt-words h3 { margin: 0; font-size: 1.25em; font-style: italic; font-weight: 400; color: #fbf3df; white-space: nowrap; }
+.pt-words p { margin: 0.1em 0 0; color: #d6cbbd; font-size: 0.85em; }
+.pt-slots { display: flex; gap: clamp(6px, 1vw, 16px); align-self: stretch; align-items: center; flex: none; }
+.pt-slot { position: relative; height: 92%; max-height: 8em; aspect-ratio: 1; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1px dashed var(--gold-dim); background: radial-gradient(ellipse at 50% 70%, rgba(111, 90, 138, 0.6), rgba(30, 18, 42, 0.4) 70%); }
+.pt-slot .hr-tok { width: 84%; font-size: 1.4em; }
+.pt-slot .n { position: absolute; left: -0.2em; top: -0.1em; font-size: 0.8em; color: #2a1608; background: #ecc672; border-radius: 50%;
+  width: 1.4em; height: 1.4em; display: flex; align-items: center; justify-content: center; }
+.pt-slot .plus { color: var(--gold-dim); font-size: 1.6em; }
+.pt-btn { font-size: 0.95em; padding: 0.35em 0.9em; cursor: pointer; color: #f3ecdf; background: rgba(60, 36, 84, 0.95); border: 1px solid var(--gold);
+  border-radius: 3px; white-space: nowrap; }
+.pt-btns { display: flex; flex-direction: column; gap: 0.3em; flex: none; }
+.tp-party .tp-go { margin-left: auto; font-size: clamp(14px, 3.4vh, 32px); flex: none; }
+.tp-go:disabled { filter: grayscale(0.85) brightness(0.7); cursor: default; }
+@media (max-width: 760px) { .hr-wrap { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); } .hr-art { display: none; } .pt-words p { display: none; } }
 @media (max-height: 480px) { .tp-brand p { max-width: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
 @media (max-width: 640px) { .tp-cur { flex-direction: column; align-items: flex-end; gap: 4px; } }
 `;
@@ -255,6 +332,8 @@ export interface BuiltTemple {
   scroller: HTMLElement;
   /** Shows or hides the up and down arrows for the scroll position. */
   refreshArrows: () => void;
+  /** Call once the page is in the document: slides into or out of the wide Heroes layout when it changed. */
+  settle: () => void;
 }
 
 /** The Temple background on its own element. It stays in place while the page above it is rebuilt (tab, purchase), because a new
@@ -269,7 +348,8 @@ export function buildTempleBackdrop(bg: string): HTMLElement {
 /** Builds the Temple page (everything above the background; see buildTempleBackdrop). */
 export function buildTemple(v: TempleView, a: TempleActions): BuiltTemple {
   ensureStyle();
-  const root = el('div', 'tp-root');
+  const wide = v.tab === 'heroes';
+  const root = el('div', `tp-root${v.wasWide ? ' wide' : ''}`);
 
   // Title and currencies.
   const head = el('div', 'tp-head');
@@ -318,13 +398,111 @@ export function buildTemple(v: TempleView, a: TempleActions): BuiltTemple {
   scroller.addEventListener('scroll', refreshArrows, { passive: true });
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(refreshArrows).observe(scroller);
 
-  // Begin Expedition.
-  const foot = el('div', 'tp-foot');
-  const chev = el('span', 'chev', '»');
-  foot.appendChild(btn('tp-go', a.newRun, icon('swords'), 'Begin Expedition', chev));
+  // Begin Expedition (in the party bar on the Heroes tab).
+  const foot = wide ? partyBar(v, a) : el('div', 'tp-foot');
+  if (!wide) foot.appendChild(goButton(a, true));
 
   root.append(head, nav, panel, foot);
-  return { root, scroller, refreshArrows };
+  const settle = (): void => {
+    if (v.wasWide === wide) return;
+    void root.offsetWidth;   // lay out the old layout first, so the change animates
+    root.classList.toggle('wide', wide);
+  };
+  return { root, scroller, refreshArrows, settle };
+}
+
+function goButton(a: TempleActions, enabled: boolean): HTMLButtonElement {
+  const b = btn('tp-go', () => { if (enabled) a.newRun(); }, icon('swords'), 'Begin Expedition', el('span', 'chev', '»'));
+  b.disabled = !enabled;
+  return b;
+}
+
+/** Placeholder portrait colours until the director's character art arrives. */
+const kHeroTint: Record<string, string> = {
+  Warrior: '#b8443c', Mage: '#4a62c9', Assassin: '#3f9a5c', Priest: '#c9ad3e', Barbarian: '#c0702e', Summoner: '#8a4fc0',
+};
+
+function token(h: { className: string; label: string }): HTMLElement {
+  const t = el('span', 'hr-tok', h.label.charAt(0));
+  t.style.background = `radial-gradient(circle at 40% 35%, ${kHeroTint[h.className] ?? '#777'}, #1c1226 120%)`;
+  return t;
+}
+
+const kStatIcon: Record<string, string> = {
+  Health: 'heart', Damage: 'sword', AttackSpeed: 'speed', DefensePct: 'shield', CritChance: 'burst', CritFactor: 'flame',
+};
+
+function heroesBody(v: TempleView, a: TempleActions): HTMLElement {
+  const wrap = el('div', 'hr-wrap');
+  const h = v.heroes.find((x) => x.className === v.heroPick) ?? v.heroes[0];
+  if (!h) return wrap;
+  const inParty = v.party.includes(h.className);
+
+  const art = el('div', 'hr-box hr-art');
+  art.append(token(h), el('div', 'ped'), el('div', 'soon', 'Art coming soon'));
+
+  const card = el('div', 'hr-box hr-card');
+  card.append(el('h2', '', h.label), el('div', 'hr-role', h.role), el('div', 'hr-cap', 'Base stats with Temple blessings and gear'));
+  for (const s of h.stats) {
+    const row = el('div', `hr-stat${s.locked ? ' locked' : ''}`);
+    row.append(icon(kStatIcon[s.key] ?? 'blessing'), el('span', '', s.label), el('span', 'v', s.value));
+    card.appendChild(row);
+  }
+  card.appendChild(el('h4', '', 'Skills'));
+  for (const sk of h.skills) {
+    const row = el('div', 'hr-skill');
+    const top = el('div');
+    top.append(el('b', '', sk.name), el('span', 'k', sk.kind === 'attack' ? 'Attack' : 'Ability'));
+    row.append(top, el('div', '', sk.text));
+    card.appendChild(row);
+  }
+  let label = 'Add to Party';
+  let ok = true;
+  if (!h.owned) { label = h.note; ok = false; }
+  else if (inParty) label = 'Remove from Party';
+  else if (v.party.length >= 3) { label = 'Party is full'; ok = false; }
+  const act = btn(`hr-act${inParty ? ' rem' : ''}`, () => { if (ok) a.toggleHero(h.className); }, label);
+  act.disabled = !ok;
+  card.appendChild(act);
+
+  const list = el('div', 'hr-box hr-list');
+  list.appendChild(el('h4', '', 'Choose a hero'));
+  const tiles = el('div', 'hr-tiles');
+  for (const x of v.heroes) {
+    const slot = v.party.indexOf(x.className);
+    const t = btn(`hr-tile${x === h ? ' on' : ''}${x.owned ? '' : ' locked'}`, () => a.pickHero(x.className), token(x), el('span', 'nm', x.label));
+    if (!x.owned) {
+      const lk = icon('lock');
+      lk.classList.add('lk');
+      t.appendChild(lk);
+      t.title = `${x.label}: ${x.note}`;
+    }
+    if (slot >= 0) t.appendChild(el('span', 'in', String(slot + 1)));
+    tiles.appendChild(t);
+  }
+  list.appendChild(tiles);
+  wrap.append(art, card, list);
+  return wrap;
+}
+
+function partyBar(v: TempleView, a: TempleActions): HTMLElement {
+  const bar = el('div', 'tp-party');
+  const words = el('div', 'pt-words');
+  words.append(el('h3', '', 'Expedition Party'), el('p', '', 'Select up to 3 heroes for your next run.'));
+  const slots = el('div', 'pt-slots');
+  for (let i = 0; i < 3; ++i) {
+    const cls = v.party[i];
+    const h = cls === undefined ? undefined : v.heroes.find((x) => x.className === cls);
+    const s = h ? btn('pt-slot', () => a.pickHero(h.className), token(h)) : el('div', 'pt-slot');
+    if (!h) s.appendChild(el('span', 'plus', '+'));
+    s.appendChild(el('span', 'n', String(i + 1)));
+    if (h) s.setAttribute('aria-label', `Slot ${i + 1}: ${h.label}`);
+    slots.appendChild(s);
+  }
+  const btns = el('div', 'pt-btns');
+  btns.append(btn('pt-btn', a.autoParty, 'Auto Party'), btn('pt-btn', a.clearParty, 'Clear Party'));
+  bar.append(words, slots, btns, goButton(a, v.party.length > 0));
+  return bar;
 }
 
 function tabBody(v: TempleView, a: TempleActions): HTMLElement {
@@ -342,24 +520,7 @@ function tabBody(v: TempleView, a: TempleActions): HTMLElement {
     for (const it of t.items.filter((i) => i.column === 2)) grid.appendChild(itemCard(it, a.buy));
     return grid;
   }
-  if (v.tab === 'heroes') {
-    const grid = el('div', 'tp-grid');
-    const n = t.roster.filter((r) => r.active).length;
-    grid.appendChild(el('h3', 'tp-sub', `Party ${n}/3: tap a hero to add or remove`));
-    for (const r of t.roster) {
-      const cls = `tp-card hero ${r.active ? 'on buy' : r.owned ? 'owned buy' : 'locked'}`;
-      const b = el('button', cls);
-      b.type = 'button';
-      const ic = el('span', 'ic');
-      ic.appendChild(icon('hero'));
-      const status = r.active ? 'In party' : r.owned ? 'Available' : r.note;
-      b.append(ic, el('span', 'nm', r.label), el('span', 'ds', status), el('span', 'side'));
-      if (r.owned) b.addEventListener('click', (ev) => { ev.stopPropagation(); a.buy(`Party:${r.className}`); });
-      else b.disabled = true;
-      grid.appendChild(b);
-    }
-    return grid;
-  }
+  if (v.tab === 'heroes') return heroesBody(v, a);
   if (v.tab === 'report') {
     const box = el('div', 'tp-rows');
     if (!v.report) {

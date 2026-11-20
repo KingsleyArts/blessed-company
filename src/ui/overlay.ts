@@ -1,6 +1,7 @@
 // DOM overlays over the canvas (Stage 0 decision: menus in the DOM): the run-over card and the Temple. The run-over card covers the room
 // view only (DrawResultsOverlay), so the HUD around it stays visible; the Temple is a full-screen page (temple.ts, director's mockup Nov 19).
 // Everything is built with DOM calls, never innerHTML with game text.
+import type { HeroSheet } from '../core/heroSheet';
 import type { TempleSnapshot } from '../core/runManager';
 import type { ResultLine } from '../core/uiText';
 import { buildTemple, buildTempleBackdrop, type TempleTab, type TempleView } from './temple';
@@ -58,6 +59,11 @@ export interface TempleHandlers {
   newRun: () => void;
   reset: () => void;
   volume: (v: number) => void;
+  /** Heroes tab: every hero's sheet, the saved party in slot order, saving a party (1 to 3 owned heroes), and Auto Party's pick. */
+  heroes: () => HeroSheet[];
+  party: () => string[];
+  setParty: (heroes: string[]) => boolean;
+  autoParty: () => string[];
 }
 
 export interface TitleHandlers {
@@ -168,15 +174,38 @@ export class Overlay {
   /** The Temple home screen (director's mockup, Nov 19): full screen, tabs on the left, one scrolling panel, Begin Expedition.
    *  The tab and the scroll position survive a redraw (a purchase redraws it). Reset progress needs a second tap within 4 s. */
   showTemple(t: TempleSnapshot, essence: number, amountMode: number, volume: number, report: TempleView['report'], h: TempleHandlers): void {
-    if (this.kind !== 'temple') this.templeTab = 'blessings';
+    if (this.kind !== 'temple') {
+      this.templeTab = 'blessings';
+      this.heroDraft = undefined;
+    }
     const sameTab = this.kind === 'temple' && this.shownTab === this.templeTab;
     const scroll = sameTab ? this.templeScroller?.scrollTop ?? 0 : 0;
-    const built = buildTemple({ snapshot: t, essence, amountMode, volume, report, tab: this.templeTab, resetArmed: performance.now() < this.resetArmedUntil }, {
+    const onHeroes = this.templeTab === 'heroes';
+    const heroes = onHeroes ? h.heroes() : [];
+    // The party bar shows the saved party, or an empty draft after Clear Party (saved once a hero is added; a party is never empty).
+    const party = onHeroes ? this.heroDraft ?? h.party() : [];
+    if (onHeroes && !heroes.some((x) => x.className === this.heroPick)) this.heroPick = party[0] ?? heroes[0]?.className ?? '';
+    const saveParty = (list: string[]): void => {
+      this.heroDraft = list.length > 0 && h.setParty(list) ? undefined : list.length > 0 ? this.heroDraft : [];
+      this.onRerender?.();
+    };
+    const built = buildTemple({
+      snapshot: t, essence, amountMode, volume, report, tab: this.templeTab, resetArmed: performance.now() < this.resetArmedUntil,
+      heroes, heroPick: this.heroPick, party, wasWide: this.kind === 'temple' && this.shownTab === 'heroes',
+    }, {
       buy: h.buy,
       amount: h.amount,
       newRun: h.newRun,
       volume: h.volume,
-      tab: (tab) => { this.templeTab = tab; this.onRerender?.(); },
+      tab: (tab) => {
+        this.templeTab = tab;
+        this.heroDraft = undefined;
+        this.onRerender?.();
+      },
+      pickHero: (cls) => { this.heroPick = cls; this.onRerender?.(); },
+      toggleHero: (cls) => saveParty(party.includes(cls) ? party.filter((x) => x !== cls) : party.length < 3 ? [...party, cls] : party),
+      autoParty: () => saveParty(h.autoParty()),
+      clearParty: () => { this.heroDraft = []; this.onRerender?.(); },
       reset: () => {
         if (performance.now() < this.resetArmedUntil) {
           this.resetArmedUntil = 0;
@@ -201,6 +230,7 @@ export class Overlay {
     this.root.appendChild(built.root);
     built.scroller.scrollTop = scroll;
     built.refreshArrows();
+    built.settle();
   }
 
   /** The title screen (director's art, Nov 19): the first screen when the game opens. */
@@ -316,6 +346,9 @@ export class Overlay {
   private newGameTimer = 0;
 
   private templeTab: TempleTab = 'blessings';
+  /** Heroes tab: the hero in the stats card, and the party while it is empty after Clear Party (undefined = the saved party). */
+  private heroPick = '';
+  private heroDraft: string[] | undefined;
   private shownTab: TempleTab | undefined;
   private templeScroller: HTMLElement | undefined;
   /** The Temple background, kept across redraws so it never flashes. */
