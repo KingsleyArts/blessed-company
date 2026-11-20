@@ -27,7 +27,7 @@ describe('combat: data readers', () => {
     CHECK(Enemy('Brute').Taunts);
     CHECK(Enemy('Shaman').PreferredDistMax < 0);
     const taunt = data.findAbility('Taunt');
-    CHECK(taunt && taunt.EffectIds.length === 2);
+    CHECK(taunt && taunt.EffectIds.join('|') === 'Taunt_3|Taunt_1|Taunt_2');   // director Nov 20: threat to highest +1, then the forced attack
     const e = data.findEffect('Taunt_1');
     CHECK(e && e.Type === 'AddThreat' && e.TargetSelector === 'AllEnemies');
   });
@@ -599,7 +599,7 @@ describe('combat: review fixes (G2 round 2)', () => {
       const e = data.findEffect(n);
       CHECK(e && e.Value >= 0, n);
     }
-    NEAR(EffectValue('Taunt_1'), 100, 1e-9);
+    NEAR(EffectValue('Taunt_1'), 1, 1e-9);   // director Nov 20: highest threat +1
     NEAR(EffectValue('Taunt_2'), 0.3, 1e-6);
     NEAR(EffectDuration('Taunt_2'), 4, 1e-9);
     NEAR(EffectValue('Rage_1'), 0.5, 1e-6);

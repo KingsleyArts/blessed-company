@@ -2,7 +2,7 @@
 // autoRun.parity.test.ts, which `npm test` runs and `npm run test:fast` skips.
 import { describe, expect, it } from 'vitest';
 import { AutoRunSession, botVisitTemple, makeAutoRunParams, type AutoRunRecord } from './autoRun';
-import { data } from './combatTestKit';
+import { unrealTauntData as data } from './combatTestKit';   // exact Unreal soak numbers: the Unreal-era Taunt
 import { makeMeta } from './metaSave';
 import { RunOutcome } from './runFlow';
 import { GearSlot, gearTempleLevel, statTempleLevel } from './temple';

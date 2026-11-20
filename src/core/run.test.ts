@@ -2,7 +2,7 @@
 // gearApply). One named test per rule, same names, seeds and numbers as the C++ suite. The printed C++ reports (bot runs over
 // 20 seeds, rescue win rate, Elite fights per run) are pinned to the native output on this data.
 import { describe, it } from 'vitest';
-import { CHECK, NEAR, data as g_data } from './combatTestKit';
+import { CHECK, NEAR, unrealTauntData as g_data } from './combatTestKit';   // native distributions: the Unreal-era Taunt
 import { CombatSim, FightState } from './combatSim';
 import { LogKind } from './combatSupport';
 import { lround } from './cstd';

@@ -5,10 +5,16 @@ import { DamageTag, kNoUnit } from './eventBus';
 import { hypot } from './fmath';
 import { ModSource, StatId } from './statResolver';
 import {
-  CHECK, Cls, EffectDuration, EffectValue, Enemy, Freeze, NEAR, Place, StepTicks, cloneData, data,
+  CHECK, Cls, EffectDuration, EffectValue, Enemy, Freeze, NEAR, Place, StepTicks, Tough, cloneData, data,
 } from './combatTestKit';
 
 const lround = (v: number): number => (v < 0 ? -Math.round(-v) : Math.round(v));
+/** Data with the Nov 12 Taunt (forced attack only, no threat raise), for tests of the forced-attack mechanism by itself. */
+const forcedOnlyTaunt = () => {
+  const d = cloneData();
+  d.findAbility('Taunt')!.EffectIds = ['Taunt_3', 'Taunt_2'];
+  return d;
+};
 const grantCleave = (s: CombatSim, w: number): void => { s.mutableUnit(w)!.extraAbilities.push({ id: 'Cleave', timer: 0 }); };
 
 describe('combat: shared-core pass', () => {
@@ -276,8 +282,32 @@ describe('combat: Warrior Cleave (disabled; mechanism kept proven)', () => {
 });
 
 describe('combat: Warrior Taunt rework', () => {
-  it('WarriorTauntForcesEveryEnemyAndEndsAfterItsDuration', () => {
+  it('WarriorTauntRaisesThreatToEachEnemysHighestPlusOne (director, Nov 20)', () => {
+    CHECK(data.findAbility('Taunt')!.EffectIds.includes('Taunt_1'), 'Taunt_1 is in the Taunt EffectIds');
+    NEAR(EffectValue('Taunt_1'), 1, 1e-9);
     const s = new CombatSim(data, 1);
+    const w = s.addPartyUnit('Warrior');
+    const m = s.addPartyUnit('Mage');
+    const g = [s.addEnemy('Grunt', 1), s.addEnemy('Grunt', 1), s.addEnemy('Grunt', 1)];
+    Freeze(s, w); Freeze(s, m);
+    g.forEach((x, i) => { Freeze(s, x); Tough(s, x); s.dealDamage(m, x, 1.0 * (i + 1), DamageTag.Auto); });
+    s.dealDamage(w, g[2], 1.0, DamageTag.Auto);
+    // Nobody can reach anybody: the threat only moves by the Taunt.
+    Place(s, w, -3000, 0); Place(s, m, -3000, 600);
+    g.forEach((x, i) => Place(s, x, 3000, 300 * i));
+    s.startFight();
+    const before = g.map((x) => [s.threatOn(x, w), s.threatOn(x, m)]);
+    CHECK(s.forceCastAbility(w));
+    g.forEach((x, i) => NEAR(s.threatOn(x, w), Math.max(before[i][0], before[i][1]) + 1, 1e-9, `enemy ${i}`));
+    g.forEach((x, i) => NEAR(s.threatOn(x, m), before[i][1], 1e-9, `mage threat on enemy ${i} unchanged`));
+    // After the forced attack ends, the Warrior still leads every threat table, so the enemies stay on it.
+    StepTicks(s, Math.trunc((EffectDuration('Taunt_3') + 0.5) / s.config().dt));
+    NEAR(s.getUnit(w)!.tauntEnemiesLeft, 0, 1e-9);
+    for (const x of g) CHECK(s.getUnit(x)!.target === w);
+  });
+  it('WarriorTauntForcesEveryEnemyAndEndsAfterItsDuration', () => {
+    // The forced attack alone (the Nov 12 Taunt): without the threat raise, the enemies go back to the Mage when it ends.
+    const s = new CombatSim(forcedOnlyTaunt(), 1);
     const w = s.addPartyUnit('Warrior');
     const m = s.addPartyUnit('Mage');
     const g = [s.addEnemy('Grunt', 1), s.addEnemy('Grunt', 1), s.addEnemy('Grunt', 1)];

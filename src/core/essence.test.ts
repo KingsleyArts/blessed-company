@@ -2,7 +2,7 @@
 // the RunBot spending option. One named test per rule, same names and numbers as the C++ suite.
 import { describe, it } from 'vitest';
 import { StatDefCsv } from '../data/generated';
-import { CHECK, NEAR, data as g_data } from './combatTestKit';
+import { CHECK, NEAR, unrealTauntData as g_data } from './combatTestKit';   // native distributions: the Unreal-era Taunt
 import { CombatSim } from './combatSim';
 import { applyEssenceToSim, classAllowedStats, kEssenceAppliesToRunningFight } from './essenceApply';
 import {

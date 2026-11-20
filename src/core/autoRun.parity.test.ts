@@ -4,7 +4,7 @@
 // `npm test` runs it, `npm run test:fast` skips it.
 import { describe, expect, it } from 'vitest';
 import { AutoRunSession, makeAutoRunParams } from './autoRun';
-import { data } from './combatTestKit';
+import { unrealTauntData as data } from './combatTestKit';   // exact Unreal soak numbers: the Unreal-era Taunt
 
 describe('autoRun parity', () => {
   it('reproduces_the_unreal_g6_soak_3164_runs', () => {

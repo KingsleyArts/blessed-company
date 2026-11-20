@@ -68,7 +68,7 @@ const kSkillText: Record<string, [string, string]> = {
   FastMelee: ['Twin Blades', 'Quick melee attacks.'],
   MeleeSwing: ['Heavy Swing', 'A strong melee attack.'],
   RangedBolt: ['Arcane Bolt', 'A ranged magic attack.'],
-  Taunt: ['Taunt', 'Forces every enemy to attack the Warrior for a few seconds, taking less damage meanwhile.'],
+  Taunt: ['Taunt', 'Puts the Warrior at the top of every enemy\'s threat and forces them all to attack the Warrior for a few seconds, taking less damage meanwhile.'],
   Cleave: ['Cleave', 'Hits every enemy close by, holding their attention.'],
   GroupHeal: ['Prayer of Mending', 'Heals the whole party.'],
   Execute: ['Execute', 'A heavy strike on the weakest enemy.'],

@@ -22,7 +22,8 @@ describe('units: Warrior', () => {
     CHECK(w.AllowedStats.includes('Threat'));
     CHECK(w.AllowedStats.length === 14);
     const t = data.findAbility('Taunt');
-    CHECK(t && t.EffectIds.length === 2);
+    CHECK(t && t.EffectIds.join('|') === 'Taunt_3|Taunt_1|Taunt_2');   // director Nov 20: threat to highest +1, then the forced attack
+    NEAR(EffectValue('Taunt_1'), 1, 1e-9);
     CHECK(w.ExtraAbilityIds.length === 0);
     const forced = data.findEffect('Taunt_3');
     CHECK(forced && forced.Type === 'ApplyModifier' && forced.Stat === 'Taunt' && forced.Duration > 0);
@@ -82,7 +83,9 @@ describe('units: Warrior', () => {
     CHECK(enemies === 4);
     StepTicks(s, Math.trunc(dur / s.config().dt) + 5);
     CHECK(s.getUnit(w)!.tauntEnemiesLeft === 0);
-    for (const u of s.getUnits()) if (u.enemy && u.alive && u.id < 5) CHECK(u.target === m);
+    // Director Nov 20: Taunt also raised the Warrior to the top of every threat table (+1), so when the forced attack ends the first
+    // three enemies stay on the Warrior.
+    for (const u of s.getUnits()) if (u.enemy && u.alive && u.id < 5) CHECK(u.target === w);
   });
   it('TauntCastsOnCooldownDuringARealFight', () => {
     const s = new CombatSim(data, 5);

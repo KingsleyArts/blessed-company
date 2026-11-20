@@ -41,6 +41,16 @@ export function cloneData(src: CombatData = data): CombatData {
   return d;
 }
 
+/** The data with the Unreal-era Taunt (forced attack only; Taunt_1 unused at +100), as the C++ build and its soak numbers had it. The
+ *  director's Nov 20 Taunt (threat to highest +1, then the forced attack) is a data change; the tests that reproduce exact Unreal
+ *  numbers or distributions use this so they keep checking the engine against the C++ build. */
+export const unrealTauntData: CombatData = (() => {
+  const d = cloneData();
+  d.findAbility('Taunt')!.EffectIds = ['Taunt_3', 'Taunt_2'];
+  d.findEffect('Taunt_1')!.Value = 100;
+  return d;
+})();
+
 export function Cls(n: string): ClassDataRow {
   const r = data.findClassRow(n);
   if (!r) throw new Error(`missing class ${n}`);

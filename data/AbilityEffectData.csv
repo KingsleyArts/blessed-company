@@ -1,6 +1,6 @@
 Name,AbilityId,Order,EffectType,TargetSelector,Stat,Value,Duration,Notes
 Taunt_3,Taunt,0,ApplyModifier,SelfIfEnemyInRange,Taunt,1,4,PLACEHOLDER draft (director Nov 12): every enemy (also ones that spawn while it lasts) must target the Warrior for Duration seconds; like the Brute taunt does to the party; Value unused; the cast waits for an enemy in the Warrior's range
-Taunt_1,Taunt,1,AddThreat,AllEnemies,,100,0,UNUSED since the Nov 12 Taunt rework (not in the Taunt EffectIds; kept so the AddThreat mechanism stays proven in tests): value = flat threat bonus (spec: raise to current highest plus flat bonus)
+Taunt_1,Taunt,1,AddThreat,AllEnemies,,1,0,director Nov 20: back in the Taunt EffectIds with Value 1 (was 100 and unused since the Nov 12 rework): raise the Warrior to each enemy's current highest threat + Value
 Taunt_2,Taunt,2,ApplyModifier,Self,DamageTakenReduction,0.3,4,PLACEHOLDER draft: 30% less damage taken for 4 s (spec: short damage reduction)
 GroupHeal_1,GroupHeal,0,Heal,AllAllies,,1.2,0,PLACEHOLDER draft: value = heal scale x base heal 8 (director Nov 17: lowered from 2 after the Priest plus miracles made every floor easy)
 Execute_1,Execute,0,Damage,WeakestEnemy,,3,0,PLACEHOLDER draft: value = damage scale (spec: big hit)

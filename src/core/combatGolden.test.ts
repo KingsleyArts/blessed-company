@@ -2,9 +2,8 @@
 // Every scenario must match exactly: the full log text, the summary and the unit state (doubles compared bit for bit).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { AbilityDataCsv, AbilityEffectDataCsv, ClassDataCsv, EnemyDataCsv } from '../data/generated';
-import { loadCombatData } from './combatData';
 import { runScenario, type ScenarioDef } from './combatScenario';
+import { unrealTauntData } from './combatTestKit';
 import { fnv1a64 } from './goldenFloor';
 
 interface Golden extends ScenarioDef {
@@ -14,7 +13,9 @@ interface Golden extends ScenarioDef {
 interface Full { name: string; log: string; state: string }
 
 const load = <T>(name: string): T => JSON.parse(readFileSync(`spec-tests/combat/${name}`, 'utf8')) as T;
-const data = loadCombatData(ClassDataCsv, EnemyDataCsv, AbilityDataCsv, AbilityEffectDataCsv)!;
+// The C++ goldens were dumped with the Unreal-era Taunt (forced attack only); the director's Nov 20 Taunt is a data change, so these
+// tests run on that Taunt row to keep checking the rules engine against the C++ build (the new Taunt is covered in combatRules.test.ts).
+const data = unrealTauntData;
 const full = new Map(load<Full[]>('combat-logs-full.json').map((f) => [f.name, f]));
 
 /** First differing line, for a readable failure. */
