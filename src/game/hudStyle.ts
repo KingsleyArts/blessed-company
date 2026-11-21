@@ -5,6 +5,68 @@ import type { Rect } from '../ui/hudLayout';
 
 type G = Phaser.GameObjects.Graphics;
 
+/** Points per quarter circle: enough for the HUD's small corners. Phaser's own arcs use about 100, and rebuilding those every frame
+ *  made the HUD by far the most expensive thing on a phone (Nov 21). */
+const kCornerSteps = 3;
+const kCircleSteps = 16;
+
+/** A Graphics whose rounded rectangles, circles and convex polygons are drawn from a few triangles (the HUD redraws them every frame). */
+export class HudGraphics extends Phaser.GameObjects.Graphics {
+  private corner(cx: number, cy: number, r: number, start: number): void {
+    const step = Math.PI / 2 / kCornerSteps;
+    for (let k = 0; k < kCornerSteps; ++k) {
+      const a = start + k * step, b = a + step;
+      this.fillTriangle(cx, cy, cx + Math.cos(a) * r, cy + Math.sin(a) * r, cx + Math.cos(b) * r, cy + Math.sin(b) * r);
+    }
+  }
+
+  override fillRoundedRect(x: number, y: number, w: number, h: number, radius: number | Phaser.Types.GameObjects.Graphics.RoundedRectRadius = 20): this {
+    const r = Math.max(0, Math.min(typeof radius === 'number' ? radius : (radius.tl ?? 0), w / 2, h / 2));
+    this.fillRect(x + r, y, w - 2 * r, h);
+    if (r <= 0) return this;
+    this.fillRect(x, y + r, r, h - 2 * r);
+    this.fillRect(x + w - r, y + r, r, h - 2 * r);
+    this.corner(x + r, y + r, r, Math.PI);
+    this.corner(x + w - r, y + r, r, -Math.PI / 2);
+    this.corner(x + w - r, y + h - r, r, 0);
+    this.corner(x + r, y + h - r, r, Math.PI / 2);
+    return this;
+  }
+
+  override strokeRoundedRect(x: number, y: number, w: number, h: number, radius: number | Phaser.Types.GameObjects.Graphics.RoundedRectRadius = 20): this {
+    const r = Math.max(0, Math.min(typeof radius === 'number' ? radius : (radius.tl ?? 0), w / 2, h / 2));
+    this.lineBetween(x + r, y, x + w - r, y);
+    this.lineBetween(x + w, y + r, x + w, y + h - r);
+    this.lineBetween(x + w - r, y + h, x + r, y + h);
+    this.lineBetween(x, y + h - r, x, y + r);
+    const step = Math.PI / 2 / kCornerSteps;
+    for (const [cx, cy, start] of [[x + r, y + r, Math.PI], [x + w - r, y + r, -Math.PI / 2], [x + w - r, y + h - r, 0], [x + r, y + h - r, Math.PI / 2]]) {
+      for (let k = 0; k < kCornerSteps; ++k) {
+        const a = start + k * step, b = a + step;
+        this.lineBetween(cx + Math.cos(a) * r, cy + Math.sin(a) * r, cx + Math.cos(b) * r, cy + Math.sin(b) * r);
+      }
+    }
+    return this;
+  }
+
+  override fillCircle(x: number, y: number, radius: number): this {
+    const step = (2 * Math.PI) / kCircleSteps;
+    for (let k = 0; k < kCircleSteps; ++k) {
+      const a = k * step, b = a + step;
+      this.fillTriangle(x, y, x + Math.cos(a) * radius, y + Math.sin(a) * radius, x + Math.cos(b) * radius, y + Math.sin(b) * radius);
+    }
+    return this;
+  }
+
+  /** Convex shapes only (every HUD shape is). */
+  override fillPoints(points: Phaser.Types.Math.Vector2Like[]): this {
+    for (let k = 1; k + 1 < points.length; ++k) {
+      this.fillTriangle(points[0].x!, points[0].y!, points[k].x!, points[k].y!, points[k + 1].x!, points[k + 1].y!);
+    }
+    return this;
+  }
+}
+
 export const kHud = {
   ink: 0x0d0814,
   bar: 0x1b1029,
@@ -118,11 +180,17 @@ export function icon(g: G, name: IconName, cx: number, cy: number, s: number, co
       poly(g, [[cx, cy - s * 0.62], [cx + s * 0.53, cy - s * 0.43], [cx + s * 0.46, cy + s * 0.12], [cx, cy + s * 0.62]], color, 0.75);
       break;
     case 'cooldown':
-      g.lineStyle(w, color, 1).beginPath().arc(cx, cy, s * 0.72, -2.4, 2.1, false).strokePath();
+      g.lineStyle(w, color, 1);
+      for (let k = 0; k < 10; ++k) {
+        const a = -2.4 + (k * 4.5) / 10, b = -2.4 + ((k + 1) * 4.5) / 10;
+        g.lineBetween(cx + Math.cos(a) * s * 0.72, cy + Math.sin(a) * s * 0.72, cx + Math.cos(b) * s * 0.72, cy + Math.sin(b) * s * 0.72);
+      }
       poly(g, [[cx - s, cy - s * 0.85], [cx - s * 0.2, cy - s * 0.7], [cx - s * 0.75, cy - s * 0.1]], color);
       break;
     case 'crit':
-      poly(g, [[cx + s * 0.25, cy - s], [cx - s * 0.65, cy + s * 0.15], [cx - s * 0.05, cy + s * 0.15], [cx - s * 0.25, cy + s], [cx + s * 0.65, cy - s * 0.2], [cx + s * 0.05, cy - s * 0.2]], color);
+      // A lightning bolt: two triangles, since HudGraphics polygons must be convex.
+      poly(g, [[cx + s * 0.25, cy - s], [cx - s * 0.65, cy + s * 0.15], [cx + s * 0.1, cy + s * 0.15]], color);
+      poly(g, [[cx - s * 0.25, cy + s], [cx + s * 0.65, cy - s * 0.2], [cx - s * 0.1, cy - s * 0.2]], color);
       break;
     case 'cross':
       g.fillStyle(0x1f8a35, 1).fillRoundedRect(cx - s, cy - s * 0.42, 2 * s, s * 0.84, s * 0.14).fillRoundedRect(cx - s * 0.42, cy - s, s * 0.84, 2 * s, s * 0.14);

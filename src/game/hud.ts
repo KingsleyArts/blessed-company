@@ -12,7 +12,7 @@ import {
   fillFraction, portraitAt, type Layout,
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, fitScale, kBaseFontPx, kTextDim, kTextLight, lin, outline } from './draw';
-import { blueGem, goldGem, icon, kHud, ornatePanel, plate, poly, statIcon, stud, wing } from './hudStyle';
+import { HudGraphics, blueGem, goldGem, icon, kHud, ornatePanel, plate, poly, statIcon, stud, wing } from './hudStyle';
 import { themeById } from '../ui/roomTheme';
 import { kThemeId, roomHaze, type RoomView } from './roomView';
 import { readability } from './combatText';
@@ -86,8 +86,8 @@ export class Hud {
 
   constructor(scene: Phaser.Scene, private readonly rm: RunManager, private readonly room: RoomView, private readonly units: UnitView,
     private readonly texts: TextPool, private readonly opts: HudOptions) {
-    this.g = scene.add.graphics().setDepth(500);
-    this.gTop = scene.add.graphics().setDepth(520);
+    this.g = scene.add.existing(new HudGraphics(scene)).setDepth(500);
+    this.gTop = scene.add.existing(new HudGraphics(scene)).setDepth(520);
     this.scene = scene;
     rm.onChange(() => { this.sideDirty = true; });
   }
@@ -744,12 +744,16 @@ export class Hud {
     spriteSizes.enemy = this.tuneValue[8];
     spriteSizes.party = this.tuneValue[9];
     kTune.forEach((d, i) => { if (d.id.startsWith('size:')) spriteSizes.unit[d.id.slice(5)] = this.tuneValue[i]; });
-    roomHaze.depth = this.tuneValue[tuneRow('hazeDepth')];
-    roomHaze.alpha = this.tuneValue[tuneRow('hazeAlpha')];
+    // This runs every frame, so the room (an expensive repaint) is redrawn only when the haze really changed.
+    const hazeDepth = this.tuneValue[tuneRow('hazeDepth')], hazeAlpha = this.tuneValue[tuneRow('hazeAlpha')];
+    if (hazeDepth !== roomHaze.depth || hazeAlpha !== roomHaze.alpha) {
+      roomHaze.depth = hazeDepth;
+      roomHaze.alpha = hazeAlpha;
+      this.room.redraw();
+    }
     readability.mergeNumbers = this.tuneValue[tuneRow('show:merge')] > 0.5;
     readability.fewerBars = this.tuneValue[tuneRow('show:bars')] > 0.5;
     readability.footRings = this.tuneValue[tuneRow('show:rings')] > 0.5;
-    this.room.redraw();
     const sim = this.sim();
     if (!sim) return;
     const c = sim.mutableConfig();
