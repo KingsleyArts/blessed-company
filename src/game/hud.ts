@@ -11,7 +11,7 @@ import {
   MapGeometry, Rect, UiState, arrowRect, computeEssenceLayout, computeLayout, computeMinimapRegions, computeRoomControls, cooldownFraction,
   fillFraction, portraitAt, type Layout,
 } from '../ui/hudLayout';
-import { TextPool, box, classColor, kBaseFontPx, kTextDim, kTextLight, lin, outline } from './draw';
+import { TextPool, box, classColor, fitScale, kBaseFontPx, kTextDim, kTextLight, lin, outline } from './draw';
 import { blueGem, goldGem, icon, kHud, ornatePanel, plate, poly, statIcon, stud, wing } from './hudStyle';
 import { themeById } from '../ui/roomTheme';
 import { kThemeId, roomHaze, type RoomView } from './roomView';
@@ -282,8 +282,8 @@ export class Hud {
       if (this.inCrystalRoom()) roomText += ' - crystal';
     }
     const tw = 0.37 * B.w - tx;
-    this.texts.fit('tb.floor', 'Expedition', new Rect(tx, B.y + 0.04 * B.h, tw, 0.54 * B.h), Math.min(kBaseFontPx * 1.65 * S, 0.5 * B.h), kTextLight);
-    this.texts.fit('tb.room', `${themeById(kThemeId).name} - ${roomText}`, new Rect(tx, B.y + 0.58 * B.h, tw, 0.34 * B.h), Math.min(kBaseFontPx * 1.05 * S, 0.32 * B.h), lin(0.78, 0.72, 0.62));
+    this.texts.fit('tb.floor', 'Expedition', new Rect(tx, B.y + 0.03 * B.h, tw, 0.5 * B.h), Math.min(kBaseFontPx * 1.65 * S, 0.46 * B.h), kTextLight);
+    this.texts.fit('tb.room', `${themeById(kThemeId).name} - ${roomText}`, new Rect(tx, B.y + 0.52 * B.h, tw, 0.42 * B.h), Math.min(kBaseFontPx * 1.05 * S, 0.38 * B.h), lin(0.78, 0.72, 0.62));
     // The floor plaque in the middle.
     const fw = 0.17 * B.w, fh = B.h * 0.76, fx = B.w * 0.5 - fw / 2, fy = (B.h - fh) / 2 - rule * 0.3, n = fh * 0.34;
     const hexPts = (i: number): number[][] => [[fx + n + i, fy + i], [fx + fw - n - i, fy + i], [fx + fw - i, fy + fh / 2], [fx + fw - n - i, fy + fh - i], [fx + n + i, fy + fh - i], [fx + i, fy + fh / 2]];
@@ -299,7 +299,7 @@ export class Hud {
     const pill = (key: string, right: number, label: string, value: number, blue: boolean): number => {
       const text = `${label}  ${formatCount(value)}`;
       const h = 0.68 * B.h;
-      const t = this.texts.at(key, text, 0, 0, kBaseFontPx * 1.4 * S, kTextLight, 0, 0.5);
+      const t = this.texts.at(key, text, 0, 0, Math.min(kBaseFontPx * 1.4 * S, 0.74 * h), kTextLight, 0, 0.5);
       const w = t.width + h + 20 * S;
       const q = new Rect(right - w, (B.h - h) / 2 - rule * 0.3, w, h);
       plate(g, q, S, kHud.well, { edge: kHud.gold, radius: h / 2, sheen: 0.05 });
@@ -464,10 +464,13 @@ export class Hud {
       : `Kills ${this.snap.kills} / ${this.snap.quota}${this.snap.quotaMet ? '  quota met' : ''}`;
     const qh = reg.quota.h;
     icon(this.g, 'swords', reg.quota.x + qh * 0.5, reg.quota.y + qh * 0.52, qh * 0.44);
-    this.texts.at('mm.quota', q, reg.quota.x + qh * 1.2, reg.quota.y, kBaseFontPx * 1.2 * S, this.snap.quotaMet ? lin(0.4, 1, 0.5) : kTextLight);
-    const ct = this.texts.at('mm.crystal', this.snap.crystalFound ? 'Crystal found' : 'Crystal ?', reg.quota.right(), reg.quota.y + S, kBaseFontPx * 1.1 * S,
-      this.snap.crystalFound ? lin(0.45, 0.75, 1) : kTextLight, 1, 0);
-    blueGem(this.g, reg.quota.right() - ct.width - qh * 0.55, reg.quota.y + qh * 0.5, qh * 0.3, qh * 0.44);
+    // Kills on the left, the crystal on the right; each keeps to its own share of the line.
+    const split = reg.quota.x + reg.quota.w * 0.6;
+    this.texts.fit('mm.quota', q, new Rect(reg.quota.x + qh * 1.1, reg.quota.y, split - reg.quota.x - qh * 1.1 - 4 * S, qh), kBaseFontPx * 1.2 * S, this.snap.quotaMet ? lin(0.4, 1, 0.5) : kTextLight);
+    const crystalBox = new Rect(split + qh * 0.9, reg.quota.y, reg.quota.right() - split - qh * 0.9, qh);
+    const crystalText = this.texts.at('mm.crystal', this.snap.crystalFound ? 'Crystal found' : 'Crystal ?', crystalBox.right(), crystalBox.y + qh / 2, kBaseFontPx * 1.1 * S, this.snap.crystalFound ? lin(0.45, 0.75, 1) : kTextLight, 1, 0.5);
+    crystalText.setScale(fitScale(crystalText, crystalBox.w, qh));
+    blueGem(this.g, crystalBox.right() - crystalText.displayWidth - qh * 0.45, reg.quota.y + qh * 0.5, qh * 0.3, qh * 0.44);
     plate(this.g, reg.map, S, kHud.well, { edge: kHud.steel, radius: 5 * S, sheen: 0 });
     const G = new MapGeometry(reg.map, this.snap.cols, this.snap.rows);
     if (!G.valid()) return;
@@ -575,7 +578,7 @@ export class Hud {
       this.texts.centered('es.init', '', E.portrait, 1, kTextLight);
     } else this.texts.centered('es.init', cls.slice(0, 1).toUpperCase(), E.portrait, kBaseFontPx * 1.9 * S, lin(col[0], col[1], col[2]), 1, true);
     this.texts.fit('es.name', displayName(side.characterName), E.nameText, kBaseFontPx * 1.9 * S, kTextLight);
-    this.texts.fit('es.class', displayName(cls), E.classText, kBaseFontPx * 1.3 * S, lin(1, 0.55, 0.3), false, 0.6);
+    this.texts.fit('es.class', displayName(cls), E.classText, kBaseFontPx * 1.3 * S, lin(1, 0.55, 0.3));
     plate(this.g, E.gearSlot, S, kHud.well, { edge: kHud.steel, radius: 4 * S, sheen: 0 });
     const gearText = (n: string, lv: number, drops: number): string => (drops > 0 ? `${n} ${lv} (+${drops})` : `${n} ${lv}`);
     const gh = 0.5 * E.gearSlot.h, gi = Math.min(gh * 0.3, 10 * S), gx = E.gearSlot.x + 5 * S + gi;
@@ -597,11 +600,11 @@ export class Hud {
       const ix = R.row.x + 6 * S + rs;
       icon(this.g, statIcon(row.stat), ix, R.row.y + R.row.h / 2, rs);
       const tx = ix + rs + 6 * S;
-      this.texts.fit(`es.n${i}`, statDisplayName(row.stat), new Rect(tx, R.name.y, R.name.right() + 16 * S - tx - 5 * S, R.name.h), kBaseFontPx * 1.3 * S, kTextLight, false, 0.6);
-      this.texts.fit(`es.v${i}`, row.showValue ? formatValueChange(row.valueNow, row.valueNext) : formatBonusChange(row.currentBonus, row.nextBonus, row.unit),
-        new Rect(R.values.x + 16 * S, R.values.y, R.values.w - 16 * S, R.values.h), kBaseFontPx * 1.2 * S, kHud.goldLit, false, 0.6);
-      this.texts.fit(`es.r${i}`, `Rank ${row.rank}/${row.maxRank}`, new Rect(tx, R.rank.y, R.rank.w, R.rank.h), kBaseFontPx * 1.05 * S, lin(0.75, 0.73, 0.7), false, 0.3);
-      this.texts.fit(`es.x${i}`, !row.canBuy && !max ? row.reason : '', new Rect(tx + R.rank.w + 6 * S, R.note.y, R.note.right() - tx - R.rank.w - 6 * S, R.note.h), kBaseFontPx * 0.95 * S, lin(0.95, 0.5, 0.45), false, 0.6);
+      const value = row.showValue ? formatValueChange(row.valueNow, row.valueNext) : formatBonusChange(row.currentBonus, row.nextBonus, row.unit);
+      this.textPair(`es.n${i}`, statDisplayName(row.stat), kBaseFontPx * 1.3 * S, kTextLight, `es.v${i}`, value, kBaseFontPx * 1.2 * S, kHud.goldLit,
+        tx, R.button.x - 5 * S, R.name.y, R.name.h, R.values.x + 16 * S);
+      this.textPair(`es.r${i}`, `Rank ${row.rank}/${row.maxRank}`, kBaseFontPx * 1.05 * S, lin(0.75, 0.73, 0.7), `es.x${i}`, !row.canBuy && !max ? row.reason : '',
+        kBaseFontPx * 0.95 * S, lin(0.95, 0.5, 0.45), tx, R.row.right() - 5 * S, R.rank.y, R.rank.h, tx);
       const want = amountValue(this.ui.amountMode);
       const full = want < 0 || (this.previewBought[i] ?? 0) >= want;
       const on = row.canBuy && full;
@@ -614,7 +617,7 @@ export class Hud {
       const t = this.texts.at(`es.b${i}`, label, 0, 0, kBaseFontPx * 1.45 * S, on ? lin(1, 0.97, 0.88) : kTextDim, 0, 0.5);
       const maxW = R.button.w - 10 * S;
       const gap = max ? 0 : 7 * S;
-      const scale = t.width + ic + gap > maxW ? maxW / (t.width + ic + gap) : 1;
+      const scale = Math.min(t.width + ic + gap > maxW ? maxW / (t.width + ic + gap) : 1, fitScale(t, maxW, R.button.h - 4 * S));
       t.setScale(scale);
       const total = t.width * scale + ic + gap;
       const x0 = R.button.x + (R.button.w - total) / 2;
@@ -631,6 +634,21 @@ export class Hud {
       this.texts.centered(`es.am${i}`, amountLabel(i), B, kBaseFontPx * 1.4 * S, active ? 0x2a1a08 : kTextLight);
       this.hit(B, 1, () => { this.ui.amountMode = i; this.sideDirty = true; });
     }
+  }
+
+  /** Two texts on one line between x0 and x1: the second starts at `minB` if there is room; if not, both shrink together until they fit. */
+  private textPair(keyA: string, a: string, pxA: number, colA: number, keyB: string, b: string, pxB: number, colB: number,
+    x0: number, x1: number, y: number, h: number, minB: number): void {
+    const gap = 6 * this.scale;
+    const ta = this.texts.at(keyA, a, x0, y + h / 2, pxA, colA, 0, 0.5);
+    const tb = this.texts.at(keyB, b, x0, y + h / 2, pxB, colB, 0, 0.5);
+    const hasB = b !== '';
+    const need = ta.width + (hasB ? gap + tb.width : 0);
+    const k = Math.min(1, (x1 - x0) / Math.max(1, need), fitScale(ta, x1 - x0, h), hasB ? fitScale(tb, x1 - x0, h) : 1);
+    ta.setScale(k);
+    tb.setScale(k);
+    const bx = x0 + ta.displayWidth + gap;
+    tb.setX(Math.max(bx, Math.min(minB, x1 - tb.displayWidth)));
   }
 
   private buy(stat: string): void {
@@ -693,7 +711,7 @@ export class Hud {
         this.g.fillStyle(kHud.hpDark, 1).fillRoundedRect(s.hp.x + hi, s.hp.y + hi, Math.max(hw, hh), hh, hh / 2);
         this.g.fillStyle(kHud.hp, 1).fillRoundedRect(s.hp.x + hi, s.hp.y + hi, Math.max(hw, hh), hh * 0.62, hh * 0.3);
       }
-      this.texts.centered(`pt.hp${i}`, `${Math.ceil(Math.max(0, u.hp))} / ${Math.round(maxHp)}`, s.hpText, kBaseFontPx * 1.1 * S, kTextLight);
+      this.texts.centered(`pt.hp${i}`, `${Math.ceil(Math.max(0, u.hp))} / ${Math.round(maxHp)}`, new Rect(s.hpText.x, s.hp.bottom(), s.hpText.w, s.hpText.bottom() - s.hp.bottom() + 0.55 * s.hpText.h), kBaseFontPx * 1.1 * S, kTextLight);
       const whole = new Rect(s.cooldown.x, s.cooldown.y, s.portrait.w, s.hp.bottom() - s.cooldown.y);
       if (this.armed !== undefined && !miracleTargetsEnemy(this.armed) && !dead) outline(this.gTop, whole, lin(1, 0.85, 0.3), 3, 0.95);
       else if (u.shieldLeft > 0) outline(this.gTop, whole, lin(0.45, 0.8, 1), 3, 0.95);

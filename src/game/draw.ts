@@ -34,6 +34,16 @@ export const kFont = '"Palatino Linotype", "Book Antiqua", Palatino, "Times New 
 /** The Unreal medium font is about 16 px tall at text scale 1. */
 export const kBaseFontPx = 16;
 
+const kTextPadX = 2;
+const kTextPadY = 3;
+
+/** The scale (at most 1) at which a text's letters fit w x h; its transparent padding may overhang. */
+export function fitScale(t: Phaser.GameObjects.Text, w: number, h: number): number {
+  const tw = t.width - 2 * kTextPadX, th = t.height - 2 * kTextPadY;
+  if (!(tw > 0) || !(th > 0)) return 1;
+  return Math.min(1, Math.max(0, w) / tw, Math.max(0, h) / th);
+}
+
 interface Slot { t: Phaser.GameObjects.Text; used: boolean; text: string; size: number; color: string; bold: boolean }
 
 export class TextPool {
@@ -47,7 +57,8 @@ export class TextPool {
     let s = this.slots.get(key);
     const col = hex(color);
     if (!s) {
-      const t = this.scene.add.text(0, 0, text, { fontFamily: kFont, fontSize: `${px}px`, color: col, fontStyle: bold ? 'bold' : 'normal' });
+      // The padding keeps tall letters and descenders inside the text's own image: without it, some fonts lose their edges.
+      const t = this.scene.add.text(0, 0, text, { fontFamily: kFont, fontSize: `${px}px`, color: col, fontStyle: bold ? 'bold' : 'normal', padding: { x: kTextPadX, y: kTextPadY } });
       t.setResolution(this.resolution);
       t.setDepth(this.depth);
       s = { t, used: true, text, size: px, color: col, bold };
@@ -72,15 +83,13 @@ export class TextPool {
   /** Text centred in R, shrunk to fit its width (DrawCentered / DrawTextFit). */
   centered(key: string, text: string, r: Rect, px: number, color: number, alpha = 1, bold = false): void {
     const t = this.at(key, text, r.x + r.w / 2, r.y + r.h / 2, px, color, 0.5, 0.5, alpha, bold);
-    const w = t.width;
-    if (w > r.w * 0.96 && w > 0) t.setScale((r.w * 0.96) / w);
+    t.setScale(fitScale(t, r.w * 0.96, r.h));
   }
 
-  /** Text vertically centred in R, left (or right) aligned, shrunk to fit (never below minScale). */
-  fit(key: string, text: string, r: Rect, px: number, color: number, right = false, minScale = 0.5, alpha = 1): void {
+  /** Text vertically centred in R, left (or right) aligned, shrunk until it fits R both ways, so it is never cut off or runs over. */
+  fit(key: string, text: string, r: Rect, px: number, color: number, right = false, alpha = 1): void {
     const t = this.at(key, text, right ? r.right() : r.x, r.y + r.h / 2, px, color, right ? 1 : 0, 0.5, alpha);
-    const w = t.width;
-    if (w > r.w && w > 0) t.setScale(Math.max(minScale, r.w / w));
+    t.setScale(fitScale(t, r.w, r.h));
   }
 }
 
