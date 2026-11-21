@@ -2,6 +2,7 @@
 // image scaled to cover the screen plus invisible tap areas laid over the painted buttons. The image and the tap areas sit in one box
 // with the image's shape, so they stay lined up at any screen size (the screen crops the box's edges, never moves the buttons).
 // Built with DOM calls only.
+import { buildFloorSizeDebug, type FloorSizeDebug } from './floorSizeDebug';
 import { el } from './overlay';
 
 /** Size of the title image in pixels; the tap areas below are in these pixels. */
@@ -26,6 +27,8 @@ export interface TitleView {
   volume: number;
   /** What is open over the art. */
   panel: 'none' | 'settings' | 'quit';
+  /** Testing builds only. */
+  floorSize?: FloorSizeDebug;
 }
 
 export interface TitleActions {
@@ -134,6 +137,7 @@ export function buildTitle(v: TitleView, a: TitleActions, bg: string): HTMLEleme
       row.appendChild(slider);
       row.appendChild(pct);
       panel.appendChild(row);
+      if (v.floorSize) panel.appendChild(buildFloorSizeDebug(v.floorSize));
     } else {
       panel.appendChild(el('h2', '', 'Quit'));
       panel.appendChild(el('div', '', 'Your progress is saved. Close this browser tab to quit.'));

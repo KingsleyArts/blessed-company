@@ -150,6 +150,28 @@ export function defaultConfig(): Config {
 /** Default config with overrides (the C++ tests copy-and-modify Config). */
 export const makeConfig = (over: Partial<Config> = {}): Config => ({ ...defaultConfig(), ...over });
 
+/** The floor size rolls (testing builds tune them). Counts are main rooms; the generator adds dead-end side rooms on top. */
+export interface FloorSize { min: number; max: number; tutorialMin: number; tutorialMax: number }
+export const kFloorSizeLow = 1;
+export const kFloorSizeHigh = 40;
+
+export function floorSizeOf(c: Config): FloorSize {
+  return { min: c.roomCountMin, max: c.roomCountMax, tutorialMin: c.tutorialRoomCountMin, tutorialMax: c.tutorialRoomCountMax };
+}
+export const defaultFloorSize = (): FloorSize => floorSizeOf(defaultConfig());
+
+/** Whole numbers in range, each max at least its min. */
+export function normalizeFloorSize(s: FloorSize): FloorSize {
+  const c = (v: number): number => Math.min(kFloorSizeHigh, Math.max(kFloorSizeLow, Math.trunc(v)));
+  const min = c(s.min);
+  const tutorialMin = c(s.tutorialMin);
+  return { min, max: Math.max(min, c(s.max)), tutorialMin, tutorialMax: Math.max(tutorialMin, c(s.tutorialMax)) };
+}
+
+export function withFloorSize(c: Config, s: FloorSize): Config {
+  return { ...c, roomCountMin: s.min, roomCountMax: s.max, tutorialRoomCountMin: s.tutorialMin, tutorialRoomCountMax: s.tutorialMax };
+}
+
 // ---------------------------------------------------------------- Simple API
 export function isBossFloor(floorNumber: number, cfg: Config = defaultConfig()): boolean {
   return cfg.bossInterval > 0 && floorNumber > 0 && floorNumber % cfg.bossInterval === 0;

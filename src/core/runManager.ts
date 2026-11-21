@@ -13,6 +13,7 @@ import { CombatSim, FightState, defaultCombatConfig, type CombatConfig, type Uni
 import { kNoUnit, type UnitId } from './eventBus';
 import { applyEssenceToSim, kEssenceAppliesToRunningFight } from './essenceApply';
 import { shippedEssenceConfig, type EssenceStatDef } from './essenceConfig';
+import { normalizeFloorSize, type FloorSize } from './floorGenerator';
 import { BuyRefusal, type BuyResult } from './essenceSidebar';
 import { RoomType, type Dir } from './floorGenerator';
 import { applyGearToSim, gearLevel } from './gearApply';
@@ -172,6 +173,7 @@ interface Timer { at: number; fn: () => void }
 export class RunManager {
   // ---- run layer ----
   private flow = new RunFlow();
+  private floorSize: FloorSize | undefined;
   private meta: MetaSave = makeMeta();
   private metaLoaded = false;
   private bot: RunBot | undefined;
@@ -298,8 +300,15 @@ export class RunManager {
     });
   }
 
+  /** Testing builds: the size of floors built from now on (the current floor keeps its layout). */
+  setFloorSize(s: FloorSize): void {
+    this.floorSize = normalizeFloorSize(s);
+    this.flow.setFloorSize(this.floorSize);
+  }
+
   private flowStart(seed: number, testSetup: boolean): void {
     this.flow = new RunFlow();
+    if (this.floorSize) this.flow.setFloorSize(this.floorSize);
     this.ensureMetaLoaded();
     this.applyMetaToFlow();
     this.flow.setStartParty(activeParty(this.meta));
@@ -498,6 +507,7 @@ export class RunManager {
     this.ensureMetaLoaded();
     this.playSpeed = Math.max(1, this.meta.defaultSpeed);
     const flow = new RunFlow();
+    if (this.floorSize) flow.setFloorSize(this.floorSize);
     this.flow = flow;
     this.applyMetaToFlow();
     flow.setPriestOwned(this.meta.priestUnlocked);

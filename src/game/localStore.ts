@@ -1,5 +1,6 @@
 // The saved meta in the browser (FTolMetaStore): one localStorage key, a corrupt save kept beside it. Storage can be missing or throw
 // (private windows, blocked site data); the game then plays with progress kept for the session only.
+import { defaultFloorSize, normalizeFloorSize, type FloorSize } from '../core/floorGenerator';
 import type { MetaStore } from '../core/runManager';
 
 const kKey = 'blessed-company.meta';
@@ -39,6 +40,30 @@ export class LocalMetaStore implements MetaStore {
     } catch {
       /* ignore */
     }
+  }
+}
+
+const kFloorSizeKey = 'blessed-company.floorSize';
+
+/** Testing builds: the floor size from the Settings debug section, shared by every save slot. */
+export function loadFloorSize(): FloorSize {
+  try {
+    const raw = window.localStorage.getItem(kFloorSizeKey);
+    if (raw) {
+      const s = JSON.parse(raw) as Partial<FloorSize>;
+      if ([s.min, s.max, s.tutorialMin, s.tutorialMax].every((v) => typeof v === 'number' && Number.isFinite(v))) return normalizeFloorSize(s as FloorSize);
+    }
+  } catch {
+    /* defaults */
+  }
+  return defaultFloorSize();
+}
+
+export function saveFloorSize(s: FloorSize): void {
+  try {
+    window.localStorage.setItem(kFloorSizeKey, JSON.stringify(s));
+  } catch {
+    /* session only */
   }
 }
 

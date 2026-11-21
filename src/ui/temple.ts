@@ -5,6 +5,7 @@
 import type { HeroSheet } from '../core/heroSheet';
 import type { TempleItem, TempleSnapshot } from '../core/runManager';
 import { amountLabel, formatCount, type ResultLine } from '../core/uiText';
+import { buildFloorSizeDebug, type FloorSizeDebug } from './floorSizeDebug';
 
 export type TempleTab = 'blessings' | 'equipment' | 'heroes' | 'report' | 'settings';
 
@@ -25,6 +26,8 @@ export interface TempleView {
   party: string[];
   /** The page drawn before this one was the wide Heroes layout, so a change of layout slides instead of jumping. */
   wasWide: boolean;
+  /** Testing builds only. */
+  floorSize?: FloorSizeDebug;
 }
 
 export interface TempleActions {
@@ -580,5 +583,6 @@ function tabBody(v: TempleView, a: TempleActions): HTMLElement {
   slider.addEventListener('input', () => a.volume(Number(slider.value) / 100));
   vol.appendChild(slider);
   set.append(vol, btn(`tp-danger${v.resetArmed ? ' armed' : ''}`, a.reset, v.resetArmed ? 'Tap again to erase all progress' : 'Reset progress'));
+  if (v.floorSize) set.appendChild(buildFloorSizeDebug(v.floorSize));
   return set;
 }

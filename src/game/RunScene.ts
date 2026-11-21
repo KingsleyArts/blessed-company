@@ -11,7 +11,8 @@ import { Hud } from './hud';
 import { roomTypeName } from '../core/runFlow';
 import type { SlotCard } from '../ui/saves';
 import { classColor, hex } from './draw';
-import { loadSettings, saveSettings, type Settings } from './localStore';
+import type { FloorSizeDebug } from '../ui/floorSizeDebug';
+import { loadFloorSize, loadSettings, saveFloorSize, saveSettings, type Settings } from './localStore';
 import { SlotStore, defaultSlotName, kSlotCount, kSlotsPerPage, type SlotInfo } from './saveSlots';
 import { Music } from './music';
 import type { Params } from './params';
@@ -50,6 +51,7 @@ export class RunScene extends Phaser.Scene {
     this.store.migrateLegacy();
     if (this.params.reset) for (let i = 0; i < kSlotCount; ++i) this.store.erase(i);
     this.rm = new RunManager(data, this.store, makeRunManagerOptions({ enemyMult: this.params.enemyMult, castTimes: this.params.castTimes }));
+    if (this.params.testing) this.rm.setFloorSize(loadFloorSize());
     this.room = new RoomView(this.rm);
     this.rm.setTransitionHook(this.room);
     this.roomCanvas = new RoomCanvas(this, 0);
@@ -108,6 +110,7 @@ export class RunScene extends Phaser.Scene {
         else this.showSaves('replace');
       },
       continue: () => this.showSaves('load'),
+      floorSize: this.floorSizeDebug(),
       setVolume: (v) => {
         this.music.setVolume(v);
         this.settings.volume = v;
@@ -228,7 +231,20 @@ export class RunScene extends Phaser.Scene {
       party: () => this.rm.getParty(),
       setParty: (list) => this.rm.setParty(list),
       autoParty: () => this.rm.autoParty(),
+      floorSize: this.floorSizeDebug(),
     });
+  }
+
+  /** The Settings debug section; testing builds only. */
+  private floorSizeDebug(): FloorSizeDebug | undefined {
+    if (!this.params.testing) return undefined;
+    return {
+      get: loadFloorSize,
+      set: (s) => {
+        this.rm.setFloorSize(s);
+        saveFloorSize(s);
+      },
+    };
   }
 
   private applyCamera(): void {

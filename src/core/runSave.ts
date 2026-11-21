@@ -1,6 +1,7 @@
 // Run saves (director, Nov 19: closing the app ended the run). A save is taken at safe moments only: the start of a run or floor,
 // after a room is entered without a fight, and after a fight is won. Closing the app mid-fight resumes at the last one, so the party
 // walks back into that fight. The text is JSON with a version; 64-bit values are written as decimal strings. Pure rules code.
+import type { FloorSize } from './floorGenerator';
 import type { FlowCheckpoint } from './runFlow';
 
 export const kRunSaveVersion = 1;
@@ -41,6 +42,16 @@ function u64Text(x: unknown): bigint | undefined {
   return v < 2n ** 64n ? v : undefined;
 }
 
+/** A saved floor size: absent in older saves (undefined), null when damaged. */
+function floorSizeField(x: unknown): FloorSize | undefined | null {
+  if (x === undefined) return undefined;
+  if (typeof x !== 'object' || x === null) return null;
+  const s = x as Json;
+  if (!isInt(s.min) || !isInt(s.max) || !isInt(s.tutorialMin) || !isInt(s.tutorialMax)) return null;
+  if (s.min < 1 || s.max < s.min || s.tutorialMin < 1 || s.tutorialMax < s.tutorialMin) return null;
+  return { min: s.min, max: s.max, tutorialMin: s.tutorialMin, tutorialMax: s.tutorialMax };
+}
+
 /** Parses a run save; undefined when it is missing, from another version, or damaged in any way. */
 export function parseRunSave(text: string | undefined): RunCheckpoint | undefined {
   if (!text) return undefined;
@@ -71,6 +82,8 @@ export function parseRunSave(text: string | undefined): RunCheckpoint | undefine
     if (!isStr(cj.className) || !isPairList(cj.ranks)) return undefined;
     sidebar.push({ className: cj.className, ranks: cj.ranks.map(([k, v]) => [k, v] as [string, number]) });
   }
+  const floorSize = floorSizeField(f.floorSize);
+  if (floorSize === null) return undefined;
   if (!Array.isArray(r.units) || !isNum(r.gauge)) return undefined;
   const units: SavedUnit[] = [];
   for (const u of r.units as unknown[]) {
@@ -81,6 +94,7 @@ export function parseRunSave(text: string | undefined): RunCheckpoint | undefine
   }
   return {
     flow: {
+      ...(floorSize ? { floorSize } : {}),
       seed, gearRng,
       floorNumber: f.floorNumber, currentNode: f.currentNode, party: [...(f.party as string[])], gold: f.gold, essence: f.essence,
       revealed: f.revealed, known: f.known, cleared: f.cleared,

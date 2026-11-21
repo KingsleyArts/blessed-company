@@ -5,8 +5,8 @@
 import { lround } from './cstd';
 import { EssenceSidebar, BuyRefusal, type BuyResult } from './essenceSidebar';
 import {
-  EnemyType, RoomType, findPath, floorSeed, generate, kEnemyTypeCount, revealNode,
-  type Config, type Dir, type EnemyPack, type Floor, type Node,
+  EnemyType, RoomType, findPath, floorSeed, floorSizeOf, generate, kEnemyTypeCount, revealNode, withFloorSize,
+  type Config, type Dir, type EnemyPack, type FloorSize, type Floor, type Node,
 } from './floorGenerator';
 import { padL } from './printf';
 import { Rng, u64 } from './rng';
@@ -51,7 +51,12 @@ export function enemyTypeName(t: EnemyType): string {
 
 /** RunFlow's part of a run save (save slots, Nov 19): everything start() and the rooms since have changed. The floor itself is not
  *  stored: it is generated again from the seed and floor number, then the fog and cleared rooms are put back. */
+/** Saves from before floor sizes were tunable were all built at these sizes. */
+const kOldSaveFloorSize: FloorSize = { min: 10, max: 20, tutorialMin: 5, tutorialMax: 8 };
+
 export interface FlowCheckpoint {
+  /** The size the current floor was built with, so a resume rebuilds the same floor whatever the setting is now. */
+  floorSize?: FloorSize;
   seed: bigint;
   floorNumber: number;
   currentNode: number;
@@ -173,9 +178,11 @@ export class RunFlow {
   private dungeonGear = new Map<string, number>();
   private drops: GearDrop[] = [];
   private gearRng = new Rng(0);
+  private builtSize: FloorSize;
 
   constructor(config: RunConfig = defaultRunConfig()) {
     this.cfg = cloneRunConfig(config);
+    this.builtSize = floorSizeOf(this.cfg.floor);
     this.sidebar = new EssenceSidebar(this.cfg.essence.clone());
   }
 
@@ -184,9 +191,12 @@ export class RunFlow {
   setStartParty(party: readonly string[]): void { this.cfg.startParty = [...party]; }
   /** The Priestess is owned (rescued in an earlier run) but may be benched: floors are generated as if she were in the party. */
   setPriestOwned(owned: boolean): void { this.priestOwned = owned; }
+  /** Testing builds: the size of floors built from now on. The current floor keeps its layout. */
+  setFloorSize(s: FloorSize): void { this.cfg.floor = withFloorSize(this.cfg.floor, s); }
 
   start(seed: bigint | number, priestUnlocked: boolean, startFloor = 1): void {
     const s = u64(seed);
+    this.builtSize = floorSizeOf(this.cfg.floor);
     const party = [...this.cfg.startParty];
     if (priestUnlocked && !party.includes(this.cfg.rescueClass)) party.push(this.cfg.rescueClass);
     startRun(this.run, s, party, this.floorConfig(party.includes(this.cfg.rescueClass)));
@@ -215,6 +225,7 @@ export class RunFlow {
   checkpoint(): FlowCheckpoint {
     const nodes = this.run.floor.nodes;
     return {
+      floorSize: { ...this.builtSize },
       seed: this.run.seed,
       floorNumber: this.run.floorNumber,
       currentNode: this.run.currentNode,
@@ -243,11 +254,13 @@ export class RunFlow {
    *  Returns false, changing nothing, when the save does not fit the floor it generates. */
   restore(cp: FlowCheckpoint): boolean {
     if (cp.floorNumber < 1 || cp.party.length === 0) return false;
-    const floor = generate(cp.seed, cp.floorNumber, this.floorConfig(cp.party.includes(this.cfg.rescueClass)));
+    const size = cp.floorSize ?? kOldSaveFloorSize;
+    const floor = generate(cp.seed, cp.floorNumber, withFloorSize(this.floorConfig(cp.party.includes(this.cfg.rescueClass)), size));
     const n = floor.nodes.length;
     const inRange = (ids: readonly number[]): boolean => ids.every((i) => Number.isInteger(i) && i >= 0 && i < n);
     if (!Number.isInteger(cp.currentNode) || cp.currentNode < 0 || cp.currentNode >= n) return false;
     if (!inRange(cp.revealed) || !inRange(cp.known) || !inRange(cp.cleared)) return false;
+    this.builtSize = { ...size };
     const run = this.run;
     Object.assign(run, makeRunState());
     run.seed = cp.seed;
@@ -442,6 +455,7 @@ export class RunFlow {
       this.finish(RunOutcome.Victory);
       return TeleportResult.Victory;
     }
+    this.builtSize = floorSizeOf(this.cfg.floor);
     nextFloor(this.run, this.floorConfig(this.partyHasPriest()));
     this.resetFloorState();
     this.enterCurrent();

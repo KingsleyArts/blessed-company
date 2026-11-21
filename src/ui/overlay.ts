@@ -4,6 +4,7 @@
 import type { HeroSheet } from '../core/heroSheet';
 import type { TempleSnapshot } from '../core/runManager';
 import type { ResultLine } from '../core/uiText';
+import type { FloorSizeDebug } from './floorSizeDebug';
 import { buildTemple, buildTempleBackdrop, type TempleTab, type TempleView } from './temple';
 import { buildSaves, type SavesMode, type SavesView, type SlotCard } from './saves';
 import { buildTitle, type TitleView } from './title';
@@ -64,6 +65,8 @@ export interface TempleHandlers {
   party: () => string[];
   setParty: (heroes: string[]) => boolean;
   autoParty: () => string[];
+  /** Testing builds only. */
+  floorSize?: FloorSizeDebug;
 }
 
 export interface TitleHandlers {
@@ -76,6 +79,8 @@ export interface TitleHandlers {
   newGame: () => void;
   continue: () => void;
   setVolume: (v: number) => void;
+  /** Testing builds only. */
+  floorSize?: FloorSizeDebug;
 }
 
 export interface SavesHandlers {
@@ -190,7 +195,7 @@ export class Overlay {
       this.onRerender?.();
     };
     const built = buildTemple({
-      snapshot: t, essence, amountMode, volume, report, tab: this.templeTab, resetArmed: performance.now() < this.resetArmedUntil,
+      floorSize: h.floorSize, snapshot: t, essence, amountMode, volume, report, tab: this.templeTab, resetArmed: performance.now() < this.resetArmedUntil,
       heroes, heroPick: this.heroPick, party, wasWide: this.kind === 'temple' && this.shownTab === 'heroes',
     }, {
       buy: h.buy,
@@ -244,7 +249,7 @@ export class Overlay {
   private renderTitle(): void {
     const h = this.titleHandlers;
     if (!h) return;
-    const view: TitleView = { canContinue: h.canContinue(), newGameArmed: performance.now() < this.newGameArmedUntil, volume: h.volume(), panel: this.titlePanel };
+    const view: TitleView = { canContinue: h.canContinue(), newGameArmed: performance.now() < this.newGameArmedUntil, volume: h.volume(), panel: this.titlePanel, floorSize: h.floorSize };
     const node = buildTitle(view, {
       newGame: () => {
         // Over a save, the first tap only warns; a second tap within 4 s erases it (like Reset progress in the Temple).
