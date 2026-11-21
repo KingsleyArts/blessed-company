@@ -95,3 +95,5 @@ export const heroTextureKey = (cls: string): string => `hero_${cls}`;
 /** Which way the chibi art (heroes and the still enemies) faces as drawn. It faces right (director, Nov 20: with `true` the heroes attacked with their backs turned),
  *  so it is mirrored only when the hero looks left. */
 export const kSpriteFacesLeft = false;
+/** A hero's portrait (256 px face from their character sheet), shown in the in-run HUD. */
+export const heroFaceKey = (cls: string): string => `hero_face_${cls}`;

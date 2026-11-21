@@ -11,10 +11,12 @@ import {
   MapGeometry, Rect, UiState, arrowRect, computeEssenceLayout, computeLayout, computeMinimapRegions, computeRoomControls, cooldownFraction,
   fillFraction, portraitAt, type Layout,
 } from '../ui/hudLayout';
-import { TextPool, box, classColor, kBarFill, kBaseFontPx, kGold, kGoldDim, kPanelFill, kTextDim, kTextLight, lin, outline } from './draw';
-import { roomHaze, type RoomView } from './roomView';
+import { TextPool, box, classColor, kBaseFontPx, kTextDim, kTextLight, lin, outline } from './draw';
+import { blueGem, goldGem, icon, kHud, ornatePanel, plate, poly, statIcon, stud, wing } from './hudStyle';
+import { themeById } from '../ui/roomTheme';
+import { kThemeId, roomHaze, type RoomView } from './roomView';
 import { readability } from './combatText';
-import { spriteSizes } from './heroMotion';
+import { heroFaceKey, spriteSizes } from './heroMotion';
 import { loadTuning, saveTuning } from './localStore';
 import { spriteTuning, type UnitView } from './unitView';
 
@@ -65,6 +67,11 @@ export class Hud {
   private flashRefused = false;
   private armed: MiracleKind | undefined;
   private tuneTab = 0;
+  /** Frames and badges drawn over the hero face images (depth 510), under the text (600). */
+  private gTop: Phaser.GameObjects.Graphics;
+  private scene: Phaser.Scene;
+  private faces = new Map<string, Phaser.GameObjects.Image>();
+  private facesUsed = new Set<string>();
   private tuneValue: number[] = [];
   private copiedLeft = 0;
   private tuneTouched = false;
@@ -80,6 +87,8 @@ export class Hud {
   constructor(scene: Phaser.Scene, private readonly rm: RunManager, private readonly room: RoomView, private readonly units: UnitView,
     private readonly texts: TextPool, private readonly opts: HudOptions) {
     this.g = scene.add.graphics().setDepth(500);
+    this.gTop = scene.add.graphics().setDepth(520);
+    this.scene = scene;
     rm.onChange(() => { this.sideDirty = true; });
   }
 
@@ -119,11 +128,16 @@ export class Hud {
   draw(): void {
     const g = this.g;
     g.clear();
+    this.gTop.clear();
+    this.facesUsed.clear();
     this.hits = [];
     const L = this.layout;
     const S = this.scale;
     // The pre-run Temple is a full-screen page with its own currencies (director, Nov 19): the HUD draws nothing under it.
-    if (this.preRun) return;
+    if (this.preRun) {
+      this.hideUnusedFaces();
+      return;
+    }
     this.drawTopBar(L, S);
     this.drawButtons(L, S);
     this.drawMinimap(L, S);
@@ -132,6 +146,27 @@ export class Hud {
     if (this.opts.testing && this.ui.paused && !this.snap.runEnded && !this.overlayOpen) this.drawTune(L, S);
     this.drawPortraits(L, S);
     this.drawGearToast(L, S);
+    this.hideUnusedFaces();
+  }
+
+  private hideUnusedFaces(): void {
+    for (const [k, im] of this.faces) if (!this.facesUsed.has(k) && im.visible) im.setVisible(false);
+  }
+
+  /** Shows a hero's face in `r`; false when the art is not loaded (the caller draws the class initial). */
+  private face(slot: string, cls: string, r: Rect, dead: boolean): boolean {
+    const key = heroFaceKey(cls);
+    if (!this.scene.textures.exists(key)) return false;
+    let im = this.faces.get(slot);
+    if (!im) {
+      im = this.scene.add.image(0, 0, key).setOrigin(0, 0).setDepth(510);
+      this.faces.set(slot, im);
+    }
+    if (im.texture.key !== key) im.setTexture(key);
+    im.setPosition(r.x, r.y).setDisplaySize(r.w, r.h).setVisible(true);
+    if (dead) im.setTint(0x55505c); else im.clearTint();
+    this.facesUsed.add(slot);
+    return true;
   }
 
   // ------------------------------------------------------------------------------------------ input
@@ -169,24 +204,22 @@ export class Hud {
   }
 
   // ------------------------------------------------------------------------------------------ helpers
-  private frame(r: Rect, fill: number, fillA: number, hover: boolean, active: boolean): void {
-    box(this.g, r, fill, fillA);
-    if (hover) box(this.g, r, 0xffffff, 0.1);
-    outline(this.g, r, active || hover ? lin(1, 0.82, 0.35) : kGold, Math.max(2, 2 * this.scale));
+  private frame(r: Rect, fill: number, _fillA: number, hover: boolean, active: boolean): void {
+    plate(this.g, r, this.scale, fill, { edge: active || hover ? kHud.goldLit : kHud.bronze, inner: active ? kHud.goldLit : kHud.gold });
+    if (hover) this.g.fillStyle(0xffffff, 0.08).fillRoundedRect(r.x, r.y, r.w, r.h, Math.min(6 * this.scale, r.h / 2));
   }
 
+  /** An ornate panel with a title banner over its first 28 px (the space the panel layouts already leave for a title). */
   private panel(r: Rect, title: string): void {
     const S = this.scale;
-    box(this.g, r, kPanelFill);
+    ornatePanel(this.g, r, S);
     const t = Math.max(2, 2 * S);
-    outline(this.g, r, kGold, t);
     const inset = 4 * S + t;
-    outline(this.g, new Rect(r.x + inset, r.y + inset, r.w - 2 * inset, r.h - 2 * inset), kGoldDim, Math.max(1, S));
-    const c = 7 * S;
-    this.g.fillStyle(kGold, 1);
-    for (const [x, y] of [[r.x, r.y], [r.right() - c, r.y], [r.x, r.bottom() - c], [r.right() - c, r.bottom() - c]]) this.g.fillRect(x, y, c, c);
-    this.texts.at(`panel${r.x}|${r.y}`, title, r.x + inset + 8 * S, r.y + inset + 6 * S, kBaseFontPx * 1.4 * S, kGold);
-    box(this.g, new Rect(r.x + inset + 6 * S, r.y + inset + 28 * S, r.w - 2 * (inset + 6 * S), Math.max(1, S)), kGoldDim);
+    const x0 = r.x + inset + 1, x1 = r.right() - inset - 1, y0 = r.y + inset + 1, y1 = r.y + inset + 27 * S, n = 7 * S;
+    poly(this.g, [[x0, y0], [x1, y0], [x1, y1 - n], [x1 - n, y1], [x0 + n, y1], [x0, y1 - n]], kHud.banner);
+    poly(this.g, [[x0, y0], [x1, y0], [x1, y0 + (y1 - y0) * 0.45], [x0, y0 + (y1 - y0) * 0.45]], 0xffffff, 0.06);
+    this.g.lineStyle(Math.max(1, S), kHud.gold, 0.9).lineBetween(x0 + n, y1, x1 - n, y1);
+    this.texts.fit(`panel${r.x}|${r.y}`, title, new Rect(r.x + inset + 12 * S, y0, r.w - 2 * inset - 24 * S, y1 - y0), kBaseFontPx * 1.4 * S, kHud.gold);
   }
 
   private triangle(cx: number, cy: number, half: number, d: number, color: number, alpha = 1): void {
@@ -223,54 +256,82 @@ export class Hud {
   // ------------------------------------------------------------------------------------------ top bar and buttons
   private drawTopBar(L: Layout, S: number): void {
     const g = this.g;
-    box(g, L.topBar, lin(0.04, 0.03, 0.05), 0.95);
-    box(g, new Rect(0, L.topBar.bottom() - Math.max(2, 2 * S), L.topBar.w, Math.max(2, 2 * S)), kGold);
-    const pad = 0.012 * L.topBar.w;
+    const B = L.topBar;
+    box(g, B, kHud.bar, 0.98);
+    box(g, new Rect(0, 0, B.w, B.h * 0.45), kHud.plum, 0.35);
+    const rule = Math.max(2, 2 * S);
+    box(g, new Rect(0, B.bottom() - rule, B.w, rule), kHud.gold);
+    box(g, new Rect(0, B.bottom() + 1, B.w, Math.max(1, S)), kHud.bronze, 0.8);
+    const pad = 0.012 * B.w;
     const run = this.rm.getFlow().getRun();
-    this.texts.at('tb.floor', run.active ? `Floor ${run.floorNumber}` : 'Floor -', pad, L.topBar.y + 0.08 * L.topBar.h, kBaseFontPx * 1.8 * S, kTextLight);
+    // The pennant with the wings.
+    const pw = B.h * 1.02, px = pad, ph = B.h * 0.96;
+    poly(g, [[px, 0], [px + pw, 0], [px + pw, ph * 0.76], [px + pw / 2, ph], [px, ph * 0.76]], kHud.bronze);
+    const e = Math.max(1.5, 2 * S);
+    poly(g, [[px + e, 0], [px + pw - e, 0], [px + pw - e, ph * 0.74], [px + pw / 2, ph - e * 1.3], [px + e, ph * 0.74]], kHud.banner);
+    const mx = px + pw / 2, my = ph * 0.42;
+    wing(g, mx - pw * 0.08, my, pw * 0.27, -1);
+    wing(g, mx + pw * 0.08, my, pw * 0.27, 1);
+    goldGem(g, mx, my, pw * 0.11, pw * 0.17);
+    // Expedition, the place and the room.
+    const tx = px + pw + 10 * S;
     let roomText = '-';
     const cur = this.currentRoom();
     if (this.snap.runActive && cur) {
       roomText = roomLabel(cur.type, cur.rescue, this.snap.boss);
       if (this.inCrystalRoom()) roomText += ' - crystal';
     }
-    this.texts.at('tb.room', roomText, pad, L.topBar.y + 0.6 * L.topBar.h, kBaseFontPx * 1.15 * S, kTextDim);
-    const pill = (key: string, right: number, label: string, value: number, icon: number): number => {
-      const text = `${label} ${formatCount(value)}`;
-      const ph = 0.62 * L.topBar.h;
-      const t = this.texts.at(key, text, 0, 0, kBaseFontPx * 1.5 * S, kTextLight, 0, 0.5);
-      const pw = t.width + ph + 22 * S;
-      const r = new Rect(right - pw, (L.topBar.h - ph) / 2, pw, ph);
-      box(g, r, kBarFill, 0.96);
-      outline(g, r, kGoldDim, Math.max(1, S));
-      const is = ph * 0.46;
-      g.fillStyle(icon, 1).fillRect(r.x + 0.5 * ph - 0.5 * is + 4 * S, r.y + (ph - is) / 2, is, is);
-      t.setPosition(r.x + ph + 6 * S, r.y + ph / 2);
-      return r.x;
+    const tw = 0.37 * B.w - tx;
+    this.texts.fit('tb.floor', 'Expedition', new Rect(tx, B.y + 0.04 * B.h, tw, 0.54 * B.h), Math.min(kBaseFontPx * 1.65 * S, 0.5 * B.h), kTextLight);
+    this.texts.fit('tb.room', `${themeById(kThemeId).name} - ${roomText}`, new Rect(tx, B.y + 0.58 * B.h, tw, 0.34 * B.h), Math.min(kBaseFontPx * 1.05 * S, 0.32 * B.h), lin(0.78, 0.72, 0.62));
+    // The floor plaque in the middle.
+    const fw = 0.17 * B.w, fh = B.h * 0.76, fx = B.w * 0.5 - fw / 2, fy = (B.h - fh) / 2 - rule * 0.3, n = fh * 0.34;
+    const hexPts = (i: number): number[][] => [[fx + n + i, fy + i], [fx + fw - n - i, fy + i], [fx + fw - i, fy + fh / 2], [fx + fw - n - i, fy + fh - i], [fx + n + i, fy + fh - i], [fx + i, fy + fh / 2]];
+    for (const dir of [-1, 1]) {
+      const a = dir < 0 ? fx - 5 * S : fx + fw + 5 * S;
+      const b = a + dir * 0.055 * B.w;
+      g.lineStyle(Math.max(1, S), kHud.gold, 0.8).lineBetween(a, fy + fh / 2, b, fy + fh / 2);
+      stud(g, a, fy + fh / 2, 4 * S);
+    }
+    poly(g, hexPts(0), kHud.gold);
+    poly(g, hexPts(Math.max(1.5, 2 * S)), kHud.banner);
+    this.texts.centered('tb.plaque', run.active ? `Floor ${run.floorNumber}` : 'Floor -', new Rect(fx + n, fy, fw - 2 * n, fh), kBaseFontPx * 1.6 * S, kTextLight);
+    const pill = (key: string, right: number, label: string, value: number, blue: boolean): number => {
+      const text = `${label}  ${formatCount(value)}`;
+      const h = 0.68 * B.h;
+      const t = this.texts.at(key, text, 0, 0, kBaseFontPx * 1.4 * S, kTextLight, 0, 0.5);
+      const w = t.width + h + 20 * S;
+      const q = new Rect(right - w, (B.h - h) / 2 - rule * 0.3, w, h);
+      plate(g, q, S, kHud.well, { edge: kHud.gold, radius: h / 2, sheen: 0.05 });
+      const gx = q.x + h * 0.56, gy = q.y + h / 2;
+      if (blue) blueGem(g, gx, gy, h * 0.27, h * 0.38); else goldGem(g, gx, gy, h * 0.27, h * 0.38);
+      t.setPosition(q.x + h + 4 * S, gy);
+      return q.x;
     };
-    let edge = L.topBar.w - pad;
-    edge = pill('tb.ess', edge, 'Essence', this.snap.runActive ? this.snap.essence : run.essence, lin(0.95, 0.75, 0.2)) - 12 * S;
-    pill('tb.faith', edge, 'Faith', this.rm.getMeta().gold, lin(0.45, 0.7, 1));
+    let edge = B.w - pad;
+    edge = pill('tb.ess', edge, 'Essence', this.snap.runActive ? this.snap.essence : run.essence, false) - 10 * S;
+    pill('tb.faith', edge, 'Faith', this.rm.getMeta().gold, true);
   }
 
   private drawButtons(L: Layout, S: number): void {
     const g = this.g;
-    const btn = lin(0.07, 0.05, 0.07);
+    const btn = kHud.plum;
     const hov = (r: Rect): boolean => r.contains(this.mouse.x, this.mouse.y);
-    this.frame(L.pause, btn, 0.92, hov(L.pause), this.ui.paused);
-    if (this.ui.paused) this.texts.centered('b.pause', 'Play', L.pause, kBaseFontPx * 1.1 * S, kTextLight);
+    this.frame(L.pause, btn, 1, hov(L.pause), this.ui.paused);
+    const pcx = L.pause.x + L.pause.w / 2, pcy = L.pause.y + L.pause.h / 2;
+    if (this.ui.paused) this.triangle(pcx, pcy, L.pause.h * 0.22, 1, kTextLight);
     else {
-      this.texts.centered('b.pause', '', L.pause, 1, kTextLight);
-      const bw = L.pause.w * 0.12, bh = L.pause.h * 0.46, cy = L.pause.y + (L.pause.h - bh) / 2;
-      g.fillStyle(kTextLight, 1).fillRect(L.pause.x + L.pause.w / 2 - bw * 1.6, cy, bw, bh).fillRect(L.pause.x + L.pause.w / 2 + bw * 0.6, cy, bw, bh);
+      const bw = L.pause.w * 0.13, bh = L.pause.h * 0.46;
+      g.fillStyle(kTextLight, 1).fillRect(pcx - bw * 1.45, pcy - bh / 2, bw, bh).fillRect(pcx + bw * 0.45, pcy - bh / 2, bw, bh);
     }
-    this.frame(L.speed, btn, 0.92, hov(L.speed), false);
-    this.texts.centered('b.speed', `${this.ui.speedMultiplier()}x`, L.speed, kBaseFontPx * 1.5 * S, kTextLight);
+    this.frame(L.speed, btn, 1, hov(L.speed), false);
+    this.texts.centered('b.speed', `${this.ui.speedMultiplier()}x`, new Rect(L.speed.x, L.speed.y, L.speed.w * 0.72, L.speed.h), kBaseFontPx * 1.4 * S, kTextLight);
+    this.triangle(L.speed.x + L.speed.w * 0.79, L.speed.y + L.speed.h / 2, L.speed.h * 0.11, 2, kTextLight);
     const autoOn = this.ui.autoOn;
-    this.frame(L.autoBtn, autoOn ? lin(0.08, 0.22, 0.1) : btn, 0.95, hov(L.autoBtn), autoOn);
-    const dot = L.autoBtn.h * 0.26;
-    g.fillStyle(autoOn ? lin(0.3, 1, 0.4) : lin(0.35, 0.35, 0.35), 1).fillRect(L.autoBtn.x + 0.14 * L.autoBtn.h, L.autoBtn.y + (L.autoBtn.h - dot) / 2, dot, dot);
-    this.texts.centered('b.auto', 'Auto', new Rect(L.autoBtn.x + 0.4 * L.autoBtn.h, L.autoBtn.y, L.autoBtn.w - 0.4 * L.autoBtn.h, L.autoBtn.h), kBaseFontPx * 1.5 * S, kTextLight);
+    this.frame(L.autoBtn, autoOn ? 0x2d5a35 : 0x4a3d45, 1, hov(L.autoBtn), autoOn);
+    const dot = L.autoBtn.h * 0.11;
+    g.fillStyle(autoOn ? lin(0.3, 1, 0.4) : kHud.muted, 1).fillCircle(L.autoBtn.x + 0.3 * L.autoBtn.h, L.autoBtn.y + L.autoBtn.h / 2, dot);
+    this.texts.centered('b.auto', 'Auto', new Rect(L.autoBtn.x + 0.42 * L.autoBtn.h, L.autoBtn.y, L.autoBtn.w - 0.5 * L.autoBtn.h, L.autoBtn.h), kBaseFontPx * 1.35 * S, kTextLight);
     this.hit(L.pause, 1, () => this.ui.togglePause());
     this.hit(L.speed, 1, () => this.ui.cycleSpeed(this.opts.testing ? 4 : 3));
     this.hit(L.autoBtn, 1, () => {
@@ -281,27 +342,41 @@ export class Hud {
     const sim = this.sim();
     const gv = sim ? sim.getGauge().value() : 0;
     const gc = sim ? sim.getGauge().capacity() : 100;
-    const miracle = (r: Rect, name: string, kind: MiracleKind, accent: number): void => {
+    const miracle = (r: Rect, name: string, kind: MiracleKind, ic: 'cross' | 'shield' | 'sun', accent: number): void => {
       const can = this.rm.miracleReady(kind);
       const armed = this.armed === kind;
-      this.frame(r, armed ? lin(0.3, 0.26, 0.05) : can ? lin(0.1, 0.09, 0.2) : lin(0.05, 0.04, 0.06), 0.95, can && hov(r), armed);
-      this.texts.centered(`b.m${kind}`, `${name} ${sim ? Math.trunc(sim.getGauge().cost(kind)) : 0}`, r, kBaseFontPx * 1.25 * S, can ? accent : lin(0.45, 0.45, 0.45));
+      this.frame(r, armed ? 0x6a4f16 : can ? kHud.plumLit : kHud.well, 1, can && hov(r), armed);
+      const s = r.h * 0.27;
+      icon(g, ic, r.x + r.h * 0.42, r.y + r.h / 2, s, can || armed ? accent : kHud.muted);
+      this.texts.centered(`b.m${kind}`, `${name} ${sim ? Math.trunc(sim.getGauge().cost(kind)) : 0}`, new Rect(r.x + r.h * 0.74, r.y, r.w - r.h * 0.82, r.h),
+        kBaseFontPx * 1.15 * S, can || armed ? kTextLight : lin(0.42, 0.4, 0.44));
       this.hit(r, 1, () => this.arm(kind));
     };
-    miracle(L.healBtn, 'Heal', MiracleKind.DivineHealing, lin(0.5, 1, 0.6));
-    miracle(L.shieldBtn, 'Shield', MiracleKind.DivineShield, lin(0.55, 0.8, 1));
-    miracle(L.smiteBtn, 'Smite', MiracleKind.DivineSmite, lin(1, 0.75, 0.35));
+    miracle(L.healBtn, 'Heal', MiracleKind.DivineHealing, 'cross', 0x6df27f);
+    miracle(L.shieldBtn, 'Shield', MiracleKind.DivineShield, 'shield', 0x69b8ff);
+    miracle(L.smiteBtn, 'Smite', MiracleKind.DivineSmite, 'sun', 0xffb13d);
     if (this.armed !== undefined) {
       const foe = miracleTargetsEnemy(this.armed);
       const banner = new Rect(L.roomArea.x, L.roomArea.y, L.roomArea.w, L.roomArea.h * 0.06);
       this.texts.centered('b.banner', `${miracleName(this.armed)}: click ${foe ? 'the ground to strike the area' : 'a hero portrait'} (press the button again to cancel)`,
         banner, kBaseFontPx * 1.4 * S, lin(1, 0.95, 0.5));
     }
-    box(g, L.gauge, lin(0.04, 0.03, 0.06), 0.9);
+    // The wings sit inside the gauge's rectangle, so it takes no more room than before.
+    const wingS = L.gauge.h * 0.8;
+    const wingLen = wingS * 1.25;
+    const G = new Rect(L.gauge.x + wingLen, L.gauge.y, L.gauge.w - 2 * wingLen, L.gauge.h);
+    wing(g, G.x + 1, G.y + G.h / 2, wingS, -1);
+    wing(g, G.right() - 1, G.y + G.h / 2, wingS, 1);
+    plate(g, G, S, kHud.ink, { edge: kHud.gold, radius: G.h / 2, sheen: 0 });
     const f = gc > 0 ? Math.min(1, Math.max(0, gv / gc)) : 0;
-    box(g, new Rect(L.gauge.x, L.gauge.y, L.gauge.w * f, L.gauge.h), lin(0.95, 0.85, 0.4), 0.95);
-    g.lineStyle(1, lin(0.7, 0.6, 0.3), 0.9).strokeRect(L.gauge.x, L.gauge.y, L.gauge.w, L.gauge.h);
-    this.texts.fit('b.gauge', `Miracle ${Math.trunc(gv)} / ${Math.trunc(gc)}`, new Rect(L.gauge.x, L.gauge.bottom() + 1, L.gauge.w, L.gauge.h * 1.4), kBaseFontPx * S, kTextLight);
+    const inset = Math.max(2, 2.5 * S);
+    const iw = G.w - 2 * inset, ih = G.h - 2 * inset;
+    if (f > 0) {
+      const fw = Math.max(ih, iw * f);
+      g.fillStyle(0xf1dc8c, 1).fillRoundedRect(G.x + inset, G.y + inset, fw, ih, ih / 2);
+      g.fillStyle(0xffffff, 0.3).fillRoundedRect(G.x + inset, G.y + inset, fw, ih * 0.42, ih * 0.2);
+    }
+    this.texts.centered('b.gauge', `Miracle ${Math.trunc(gv)} / ${Math.trunc(gc)}`, new Rect(L.gauge.x, G.bottom() + 1, L.gauge.w, G.h * 1.4), kBaseFontPx * S, kTextLight);
   }
 
   private arm(kind: MiracleKind): void {
@@ -379,7 +454,7 @@ export class Hud {
 
   private drawMinimap(L: Layout, S: number): void {
     const run = this.snap.runActive;
-    this.panel(L.minimap, run ? `Floor ${this.snap.floorNumber}` : 'Floor -');
+    this.panel(L.minimap, 'Dungeon Map');
     const reg = computeMinimapRegions(L.minimap, S);
     if (!run) {
       this.texts.centered('mm.none', 'No run', reg.map, kBaseFontPx * 0.95 * S, lin(0.5, 0.48, 0.46), 0.6);
@@ -387,14 +462,18 @@ export class Hud {
     }
     const q = this.snap.boss ? (this.snap.bossKilled ? 'Boss defeated' : 'Defeat the boss')
       : `Kills ${this.snap.kills} / ${this.snap.quota}${this.snap.quotaMet ? '  quota met' : ''}`;
-    this.texts.at('mm.quota', q, reg.quota.x, reg.quota.y, kBaseFontPx * 1.2 * S, this.snap.quotaMet ? lin(0.4, 1, 0.5) : kTextLight);
-    this.texts.at('mm.crystal', this.snap.crystalFound ? 'Crystal found' : 'Crystal ?', reg.quota.right(), reg.quota.y + S, kBaseFontPx * 1.1 * S,
-      this.snap.crystalFound ? lin(0.45, 0.75, 1) : kTextDim, 1, 0);
+    const qh = reg.quota.h;
+    icon(this.g, 'swords', reg.quota.x + qh * 0.5, reg.quota.y + qh * 0.52, qh * 0.44);
+    this.texts.at('mm.quota', q, reg.quota.x + qh * 1.2, reg.quota.y, kBaseFontPx * 1.2 * S, this.snap.quotaMet ? lin(0.4, 1, 0.5) : kTextLight);
+    const ct = this.texts.at('mm.crystal', this.snap.crystalFound ? 'Crystal found' : 'Crystal ?', reg.quota.right(), reg.quota.y + S, kBaseFontPx * 1.1 * S,
+      this.snap.crystalFound ? lin(0.45, 0.75, 1) : kTextLight, 1, 0);
+    blueGem(this.g, reg.quota.right() - ct.width - qh * 0.55, reg.quota.y + qh * 0.5, qh * 0.3, qh * 0.44);
+    plate(this.g, reg.map, S, kHud.well, { edge: kHud.steel, radius: 5 * S, sheen: 0 });
     const G = new MapGeometry(reg.map, this.snap.cols, this.snap.rows);
     if (!G.valid()) return;
     const hoverId = G.roomAt(this.snap.rooms, this.mouse.x, this.mouse.y);
     for (const r of this.snap.rooms) {
-      const col = r.visited ? lin(0.5, 0.52, 0.62) : lin(0.3, 0.3, 0.36);
+      const col = r.visited ? kHud.gold : kHud.muted;
       for (let d = 0; d < 4; ++d) if (r.doors[d]) box(this.g, G.corridor(r.gx, r.gy, d), col, r.visited ? 1 : 0.8);
     }
     const th = Math.max(1, 1.5 * S);
@@ -402,10 +481,10 @@ export class Hud {
       const Q = G.roomRect(r.gx, r.gy);
       const current = r.id === this.snap.currentRoom || r.current;
       let fill: number, edge: number, fillA = 1, iconA = 1;
-      if (current) { fill = lin(0.6, 0.45, 0.1); edge = lin(1, 0.86, 0.3); }
+      if (current) { fill = 0xc99a3c; edge = kHud.goldLit; }
       else if (r.visited && r.cleared) { fill = lin(0.18, 0.34, 0.24); edge = lin(0.45, 0.72, 0.52); }
-      else if (r.visited) { fill = lin(0.26, 0.28, 0.4); edge = lin(0.58, 0.6, 0.8); }
-      else { fill = lin(0.07, 0.07, 0.09); fillA = 0.9; edge = lin(0.38, 0.38, 0.46); iconA = 0.55; }
+      else if (r.visited) { fill = kHud.plumLit; edge = kHud.gold; }
+      else { fill = kHud.ink; fillA = 0.9; edge = kHud.muted; iconA = 0.6; }
       if (current) {
         const gl = 0.09 * G.pitch;
         box(this.g, new Rect(Q.x - gl, Q.y - gl, Q.w + 2 * gl, Q.h + 2 * gl), lin(1, 0.8, 0.25), 0.3);
@@ -435,20 +514,19 @@ export class Hud {
       const R = arrowRect(C, d);
       const on = this.arrowOk(d);
       const hover = on && R.contains(this.mouse.x, this.mouse.y);
-      box(this.g, R, on ? lin(0.09, 0.06, 0.08) : lin(0.05, 0.05, 0.06), on ? 0.93 : 0.6);
-      if (hover) box(this.g, R, 0xffffff, 0.14);
-      outline(this.g, R, on ? (hover ? lin(1, 0.85, 0.4) : kGold) : lin(0.3, 0.3, 0.32), Math.max(2, 2 * S), on ? 1 : 0.6);
-      this.triangle(R.x + R.w / 2, R.y + R.h / 2, 0.27 * R.w, d, on ? lin(1, 0.93, 0.7) : lin(0.35, 0.35, 0.38), on ? 1 : 0.7);
+      plate(this.g, R, S, on ? kHud.plumLit : kHud.well, { edge: on ? (hover ? kHud.goldLit : kHud.gold) : kHud.steel, inner: on ? kHud.gold : undefined, sheen: on ? 0.1 : 0.02 });
+      this.triangle(R.x + R.w / 2, R.y + R.h / 2, 0.25 * R.w, d, on ? 0xfff8ea : kHud.muted, on ? 1 : 0.7);
       if (on) this.hit(R, 1, () => { if (this.arrowOk(d)) this.rm.moveDirection(d); });
     }
     const tp = this.teleportOk();
     const T = C.teleport;
     const hover = tp && T.contains(this.mouse.x, this.mouse.y);
-    box(this.g, T, tp ? lin(0.08, 0.2, 0.45) : lin(0.06, 0.06, 0.08), tp ? 0.96 : 0.75);
-    if (hover) box(this.g, T, 0xffffff, 0.14);
-    outline(this.g, T, tp ? lin(0.5, 0.8, 1) : lin(0.3, 0.3, 0.34), Math.max(2, 2 * S), tp ? 1 : 0.7);
-    this.diamond(T.x + 0.5 * T.h, T.y + 0.5 * T.h, 0.22 * T.h, 0.3 * T.h, tp ? lin(0.45, 0.78, 1) : lin(0.3, 0.32, 0.38));
-    this.texts.centered('rc.tp', 'Teleport up', new Rect(T.x + T.h, T.y, T.w - T.h, T.h), kBaseFontPx * 1.4 * S, tp ? kTextLight : kTextDim);
+    plate(this.g, T, S, tp ? kHud.banner : kHud.well, { edge: tp ? (hover ? kHud.goldLit : kHud.gold) : kHud.steel, inner: tp ? kHud.gold : undefined, radius: T.h * 0.3, sheen: tp ? 0.1 : 0.03 });
+    const gx = T.x + 0.58 * T.h, gy = T.y + 0.5 * T.h;
+    if (tp) this.g.fillStyle(0x9d6bff, 0.3).fillCircle(gx, gy, 0.42 * T.h);
+    if (tp) blueGem(this.g, gx, gy, 0.23 * T.h, 0.33 * T.h);
+    else poly(this.g, [[gx, gy - 0.33 * T.h], [gx + 0.23 * T.h, gy], [gx, gy + 0.33 * T.h], [gx - 0.23 * T.h, gy]], kHud.steel);
+    this.texts.centered('rc.tp', 'Teleport Up', new Rect(T.x + T.h, T.y, T.w - 1.2 * T.h, T.h), kBaseFontPx * 1.4 * S, tp ? kTextLight : kTextDim);
     if (tp) this.hit(T, 1, () => { if (this.teleportOk()) this.rm.teleportUp(); });
   }
 
@@ -488,44 +566,47 @@ export class Hud {
       return;
     }
     const E = computeEssenceLayout(L.essence, side.rows.length, S);
-    const line = Math.max(1, S);
     const member = side.party[side.characterIndex];
     const cls = member ? member.className : side.characterName;
     const col = classColor(cls);
-    box(this.g, E.portrait, lin(col[0] * 0.28, col[1] * 0.28, col[2] * 0.28));
-    this.texts.centered('es.init', cls.slice(0, 1).toUpperCase(), E.portrait, kBaseFontPx * 1.9 * S, lin(col[0], col[1], col[2]), 1, true);
-    outline(this.g, E.portrait, lin(1, 0.82, 0.3), Math.max(2, 2 * S));
+    plate(this.g, E.portrait, S, lin(col[0] * 0.28, col[1] * 0.28, col[2] * 0.28), { edge: kHud.gold, radius: 5 * S, sheen: 0 });
+    const faceInset = Math.max(2, 2.5 * S);
+    if (this.face('essence', cls, new Rect(E.portrait.x + faceInset, E.portrait.y + faceInset, E.portrait.w - 2 * faceInset, E.portrait.h - 2 * faceInset), false)) {
+      this.texts.centered('es.init', '', E.portrait, 1, kTextLight);
+    } else this.texts.centered('es.init', cls.slice(0, 1).toUpperCase(), E.portrait, kBaseFontPx * 1.9 * S, lin(col[0], col[1], col[2]), 1, true);
     this.texts.fit('es.name', displayName(side.characterName), E.nameText, kBaseFontPx * 1.9 * S, kTextLight);
-    this.texts.fit('es.class', displayName(cls), E.classText, kBaseFontPx * 1.3 * S, lin(col[0], col[1], col[2]), false, 0.6);
-    box(this.g, E.gearSlot, kBarFill, 0.96);
-    outline(this.g, E.gearSlot, kGoldDim, line);
+    this.texts.fit('es.class', displayName(cls), E.classText, kBaseFontPx * 1.3 * S, lin(1, 0.55, 0.3), false, 0.6);
+    plate(this.g, E.gearSlot, S, kHud.well, { edge: kHud.steel, radius: 4 * S, sheen: 0 });
     const gearText = (n: string, lv: number, drops: number): string => (drops > 0 ? `${n} ${lv} (+${drops})` : `${n} ${lv}`);
-    const half = new Rect(E.gearSlot.x + 6 * S, E.gearSlot.y, E.gearSlot.w - 12 * S, 0.5 * E.gearSlot.h);
+    const gh = 0.5 * E.gearSlot.h, gi = Math.min(gh * 0.3, 10 * S), gx = E.gearSlot.x + 5 * S + gi;
+    icon(this.g, 'sword', gx, E.gearSlot.y + gh / 2, gi);
+    icon(this.g, 'shield', gx, E.gearSlot.y + gh * 1.5, gi);
+    const half = new Rect(gx + gi + 4 * S, E.gearSlot.y, E.gearSlot.right() - (gx + gi + 8 * S), gh);
     this.texts.fit('es.w', gearText('Weapon', side.weaponLevel, side.weaponDrops), half, kBaseFontPx * 1.05 * S, kTextLight);
     this.texts.fit('es.a', gearText('Armor', side.armorLevel, side.armorDrops), new Rect(half.x, half.y + half.h, half.w, half.h), kBaseFontPx * 1.05 * S, kTextLight);
     for (let i = 0; i < E.rows.length && i < side.rows.length; ++i) {
       const R = E.rows[i];
       const row = side.rows[i];
-      box(this.g, R.row, kBarFill, 0.96);
-      outline(this.g, R.row, kGoldDim, line);
+      plate(this.g, R.row, S, kHud.well, { edge: 0x5d4530, radius: 3 * S, sheen: 0.025 });
       if (i === this.flashRow && this.flashAge < 0.45) {
         const a = 0.45 * (1 - this.flashAge / 0.45);
         box(this.g, R.row, this.flashRefused ? lin(1, 0.15, 0.1) : lin(0.3, 1, 0.4), a);
       }
       const max = row.maxRank > 0 && row.rank >= row.maxRank;
-      this.texts.fit(`es.n${i}`, statDisplayName(row.stat), R.name, kBaseFontPx * 1.4 * S, kTextLight, false, 0.6);
+      const rs = Math.min(R.row.h * 0.27, 13 * S);
+      const ix = R.row.x + 6 * S + rs;
+      icon(this.g, statIcon(row.stat), ix, R.row.y + R.row.h / 2, rs);
+      const tx = ix + rs + 6 * S;
+      this.texts.fit(`es.n${i}`, statDisplayName(row.stat), new Rect(tx, R.name.y, R.name.right() + 16 * S - tx - 5 * S, R.name.h), kBaseFontPx * 1.3 * S, kTextLight, false, 0.6);
       this.texts.fit(`es.v${i}`, row.showValue ? formatValueChange(row.valueNow, row.valueNext) : formatBonusChange(row.currentBonus, row.nextBonus, row.unit),
-        R.values, kBaseFontPx * 1.2 * S, lin(1, 0.9, 0.55), false, 0.6);
-      this.texts.fit(`es.r${i}`, `Rank ${row.rank}/${row.maxRank}`, R.rank, kBaseFontPx * 1.05 * S, lin(0.75, 0.73, 0.7), false, 0.3);
-      this.texts.fit(`es.x${i}`, !row.canBuy && !max ? row.reason : '', R.note, kBaseFontPx * 0.95 * S, lin(0.95, 0.5, 0.45), false, 0.6);
+        new Rect(R.values.x + 16 * S, R.values.y, R.values.w - 16 * S, R.values.h), kBaseFontPx * 1.2 * S, kHud.goldLit, false, 0.6);
+      this.texts.fit(`es.r${i}`, `Rank ${row.rank}/${row.maxRank}`, new Rect(tx, R.rank.y, R.rank.w, R.rank.h), kBaseFontPx * 1.05 * S, lin(0.75, 0.73, 0.7), false, 0.3);
+      this.texts.fit(`es.x${i}`, !row.canBuy && !max ? row.reason : '', new Rect(tx + R.rank.w + 6 * S, R.note.y, R.note.right() - tx - R.rank.w - 6 * S, R.note.h), kBaseFontPx * 0.95 * S, lin(0.95, 0.5, 0.45), false, 0.6);
       const want = amountValue(this.ui.amountMode);
       const full = want < 0 || (this.previewBought[i] ?? 0) >= want;
       const on = row.canBuy && full;
       const hover = on && R.button.contains(this.mouse.x, this.mouse.y);
-      box(this.g, R.button, on ? lin(0.5, 0.36, 0.07) : lin(0.07, 0.065, 0.07), on ? 0.98 : 0.85);
-      if (on) box(this.g, new Rect(R.button.x, R.button.y, R.button.w, 0.4 * R.button.h), lin(1, 0.9, 0.5), 0.18);
-      if (hover) box(this.g, R.button, 0xffffff, 0.16);
-      outline(this.g, R.button, on ? (hover ? lin(1, 0.92, 0.55) : lin(1, 0.82, 0.3)) : lin(0.3, 0.3, 0.32), Math.max(2, 2 * S), on ? 1 : 0.7);
+      plate(this.g, R.button, S, on ? 0x7a5a24 : kHud.steel, { edge: on ? (hover ? kHud.goldLit : kHud.gold) : 0x6a6370, radius: 3 * S, sheen: on ? 0.16 : 0.08 });
       const cost = on ? this.previewCost[i] ?? row.nextCost : row.nextCost;
       const bought = on ? this.previewBought[i] ?? 0 : 0;
       const label = formatBuyButton(max, cost, bought);
@@ -537,7 +618,7 @@ export class Hud {
       t.setScale(scale);
       const total = t.width * scale + ic + gap;
       const x0 = R.button.x + (R.button.w - total) / 2;
-      if (!max) this.diamond(x0 + ic / 2, R.button.y + R.button.h / 2, ic / 2, ic * 0.62, on ? lin(0.55, 0.8, 1) : lin(0.25, 0.3, 0.4));
+      if (!max) goldGem(this.g, x0 + ic / 2, R.button.y + R.button.h / 2, ic * 0.48, ic * 0.68);
       t.setPosition(x0 + ic + gap, R.button.y + R.button.h / 2);
       const stat = row.stat;
       if (on) this.hit(R.button, 1, () => this.buy(stat));
@@ -546,10 +627,8 @@ export class Hud {
       const B = E.amount[i];
       const active = i === this.ui.amountMode;
       const hover = B.contains(this.mouse.x, this.mouse.y);
-      box(this.g, B, active ? lin(0.32, 0.23, 0.05) : lin(0.07, 0.05, 0.07), active ? 0.97 : 0.92);
-      if (hover) box(this.g, B, 0xffffff, 0.12);
-      outline(this.g, B, active ? lin(1, 0.85, 0.4) : hover ? kGold : kGoldDim, Math.max(2, 2 * S));
-      this.texts.centered(`es.am${i}`, amountLabel(i), B, kBaseFontPx * 1.5 * S, active ? kTextLight : kTextDim);
+      plate(this.g, B, S, active ? kHud.goldBtn : kHud.plum, { edge: active || hover ? kHud.goldLit : kHud.bronze, radius: 5 * S, sheen: active ? 0.2 : 0.08 });
+      this.texts.centered(`es.am${i}`, amountLabel(i), B, kBaseFontPx * 1.4 * S, active ? 0x2a1a08 : kTextLight);
       this.hit(B, 1, () => { this.ui.amountMode = i; this.sideDirty = true; });
     }
   }
@@ -579,33 +658,45 @@ export class Hud {
       const col = classColor(u.name);
       const selected = i === this.ui.selected;
       const dead = !u.alive;
-      box(this.g, s.cooldown, lin(0.1, 0.05, 0.15), 0.95);
+      plate(this.g, s.cooldown, S, kHud.ink, { edge: kHud.bronze, radius: s.cooldown.h / 2, sheen: 0 });
+      const cdIn = Math.max(1, 1.5 * S);
+      const cdBar = (f: number, color: number): void => {
+        const w = (s.cooldown.w - 2 * cdIn) * f;
+        if (w > 0) this.g.fillStyle(color, 1).fillRoundedRect(s.cooldown.x + cdIn, s.cooldown.y + cdIn, Math.max(w, s.cooldown.h - 2 * cdIn), s.cooldown.h - 2 * cdIn, (s.cooldown.h - 2 * cdIn) / 2);
+      };
       const cd = sim.primaryAbilityCooldown(u.id);
-      if (u.castKind !== 0 && u.castTotal > 0 && !dead) {
-        const f = Math.min(1, Math.max(0, 1 - u.castLeft / u.castTotal));
-        box(this.g, new Rect(s.cooldown.x, s.cooldown.y, s.cooldown.w * f, s.cooldown.h), lin(1, 0.8, 0.2));
-      } else if (cd.valid && !dead) {
+      if (u.castKind !== 0 && u.castTotal > 0 && !dead) cdBar(Math.min(1, Math.max(0, 1 - u.castLeft / u.castTotal)), lin(1, 0.8, 0.2));
+      else if (cd.valid && !dead) {
         const f = cooldownFraction(cd.remaining, cd.total);
-        box(this.g, new Rect(s.cooldown.x, s.cooldown.y, s.cooldown.w * f, s.cooldown.h), f >= 1 ? lin(0.8, 0.5, 1) : lin(0.58, 0.25, 0.9));
+        cdBar(f, f >= 1 ? lin(0.8, 0.5, 1) : lin(0.58, 0.25, 0.9));
       }
-      outline(this.g, s.cooldown, 0x000000, Math.max(1, S), 0.9);
       if (selected) {
-        const gl = 5 * S;
-        box(this.g, new Rect(s.portrait.x - gl, s.portrait.y - gl, s.portrait.w + 2 * gl, s.portrait.h + 2 * gl), lin(1, 0.8, 0.3), 0.35);
+        const gl = 4 * S;
+        this.g.fillStyle(kHud.goldLit, 0.32).fillRoundedRect(s.portrait.x - gl, s.portrait.y - gl, s.portrait.w + 2 * gl, s.portrait.h + 2 * gl, 8 * S);
       }
-      box(this.g, s.portrait, dead ? lin(0.07, 0.07, 0.07) : lin(col[0] * 0.28, col[1] * 0.28, col[2] * 0.28));
-      this.texts.centered(`pt.i${i}`, u.name.slice(0, 1).toUpperCase(), s.portrait, s.portrait.h * 0.62, dead ? lin(0.35, 0.35, 0.35) : lin(col[0], col[1], col[2]), 1, true);
-      if (selected) outline(this.g, s.portrait, lin(1, 0.82, 0.3), Math.max(3, 3 * S));
-      else outline(this.g, s.portrait, i === hoverSlot ? 0xffffff : lin(col[0] * 0.7, col[1] * 0.7, col[2] * 0.7), Math.max(2, 2 * S), i === hoverSlot ? 0.9 : 1);
+      plate(this.g, s.portrait, S, dead ? lin(0.07, 0.07, 0.07) : lin(col[0] * 0.28, col[1] * 0.28, col[2] * 0.28),
+        { edge: selected ? kHud.goldLit : i === hoverSlot ? 0xffffff : kHud.gold, radius: 6 * S, sheen: 0 });
+      const fi = Math.max(2, 3 * S);
+      const hasFace = this.face(`party${i}`, u.name, new Rect(s.portrait.x + fi, s.portrait.y + fi, s.portrait.w - 2 * fi, s.portrait.h - 2 * fi), dead);
+      if (hasFace) {
+        const bs = s.portrait.w * 0.27;
+        const badge = new Rect(s.portrait.x + 2 * S, s.portrait.bottom() - bs - 2 * S, bs, bs);
+        plate(this.gTop, badge, S, dead ? lin(0.1, 0.1, 0.1) : lin(col[0] * 0.5, col[1] * 0.5, col[2] * 0.5), { edge: kHud.gold, radius: 3 * S, sheen: 0.1 });
+        this.texts.centered(`pt.i${i}`, u.name.slice(0, 1).toUpperCase(), badge, bs * 0.72, 0xffffff, 1, true);
+      } else this.texts.centered(`pt.i${i}`, u.name.slice(0, 1).toUpperCase(), s.portrait, s.portrait.h * 0.62, dead ? lin(0.35, 0.35, 0.35) : lin(col[0], col[1], col[2]), 1, true);
+      if (selected) this.gTop.lineStyle(Math.max(2, 2.5 * S), kHud.goldLit, 1).strokeRoundedRect(s.portrait.x + 1, s.portrait.y + 1, s.portrait.w - 2, s.portrait.h - 2, 6 * S);
       const maxHp = sim.maxHp(u);
       const f = fillFraction(u.hp, maxHp);
-      box(this.g, s.hp, lin(0.18, 0.18, 0.18), 0.95);
-      if (f > 0) box(this.g, new Rect(s.hp.x, s.hp.y, s.hp.w * f, s.hp.h), lin(0.15, 0.8, 0.2));
-      outline(this.g, s.hp, 0x000000, Math.max(1, S), 0.9);
+      plate(this.g, s.hp, S, kHud.ink, { edge: kHud.bronze, radius: s.hp.h / 2, sheen: 0 });
+      const hi = Math.max(1, 1.5 * S), hw = (s.hp.w - 2 * hi) * f, hh = s.hp.h - 2 * hi;
+      if (f > 0) {
+        this.g.fillStyle(kHud.hpDark, 1).fillRoundedRect(s.hp.x + hi, s.hp.y + hi, Math.max(hw, hh), hh, hh / 2);
+        this.g.fillStyle(kHud.hp, 1).fillRoundedRect(s.hp.x + hi, s.hp.y + hi, Math.max(hw, hh), hh * 0.62, hh * 0.3);
+      }
       this.texts.centered(`pt.hp${i}`, `${Math.ceil(Math.max(0, u.hp))} / ${Math.round(maxHp)}`, s.hpText, kBaseFontPx * 1.1 * S, kTextLight);
       const whole = new Rect(s.cooldown.x, s.cooldown.y, s.portrait.w, s.hp.bottom() - s.cooldown.y);
-      if (this.armed !== undefined && !miracleTargetsEnemy(this.armed) && !dead) outline(this.g, whole, lin(1, 0.85, 0.3), 3, 0.95);
-      else if (u.shieldLeft > 0) outline(this.g, whole, lin(0.45, 0.8, 1), 3, 0.95);
+      if (this.armed !== undefined && !miracleTargetsEnemy(this.armed) && !dead) outline(this.gTop, whole, lin(1, 0.85, 0.3), 3, 0.95);
+      else if (u.shieldLeft > 0) outline(this.gTop, whole, lin(0.45, 0.8, 1), 3, 0.95);
       const id = u.id;
       this.hit(whole, 1, () => {
         if (this.armed !== undefined && !miracleTargetsEnemy(this.armed)) this.castOnHero(id);
@@ -623,8 +714,7 @@ export class Hud {
     const w = Math.min(0.8 * L.roomArea.w, 620 * S);
     const h = 42 * S;
     const r = new Rect(L.roomArea.x + 0.5 * (L.roomArea.w - w), L.roomArea.y + 14 * S, w, h);
-    box(this.g, r, lin(0.05, 0.04, 0.06), 0.9 * fade);
-    outline(this.g, r, kGold, Math.max(1, S), fade);
+    plate(this.gTop, r, S, kHud.panel, { edge: kHud.gold, alpha: fade, sheen: 0.05 });
     this.texts.centered('toast', text, r, kBaseFontPx * 1.3 * S, lin(1, 0.92, 0.6), fade);
   }
 

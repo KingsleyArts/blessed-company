@@ -35,7 +35,7 @@ export const roomHaze = { depth: 0.16, alpha: 0.85 };
 const kFadeRate = 1.5;
 const kSlotSpacing = 110;
 const kWalkTimeout = 30;
-const kThemeId = 1;   // tol.RoomTheme default: goblin cave
+export const kThemeId = 1;   // tol.RoomTheme default: goblin cave
 const kVoid = 0x050506;
 // ---- tile-set art (Nov 20): one floor or wall texture covers this many world units (about the hero sprites' pixel density) ----
 const kArtWorld = 400;

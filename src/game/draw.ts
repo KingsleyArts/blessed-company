@@ -29,7 +29,8 @@ export function classColor(cls: string): [number, number, number] {
 }
 export const hex = (c: number): string => '#' + c.toString(16).padStart(6, '0');
 
-export const kFont = 'system-ui, "Segoe UI", Roboto, Arial, sans-serif';
+// A serif like the director's in-run mockup (Nov 21). Not Georgia: its old-style digits make 0 read as o and 1 as I in the HUD's numbers.
+export const kFont = '"Palatino Linotype", "Book Antiqua", Palatino, "Times New Roman", serif';
 /** The Unreal medium font is about 16 px tall at text scale 1. */
 export const kBaseFontPx = 16;
 

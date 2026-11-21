@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { artKeys, kThemes } from '../ui/roomTheme';
-import { enemyTextureKey, heroTextureKey, kEnemySpriteNames, kHeroSpriteClasses } from './heroMotion';
+import { enemyTextureKey, heroFaceKey, heroTextureKey, kEnemySpriteNames, kHeroSpriteClasses } from './heroMotion';
 import { goblinFrames } from './unitView';
 
 /** Loads what exists of the optional art and music (public/assets/vendor, copied by `npm run assets`), then starts the run scene.
@@ -23,6 +23,9 @@ export class BootScene extends Phaser.Scene {
     }
     for (const cls of kHeroSpriteClasses) {
       this.load.image(heroTextureKey(cls), `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_sprite.png`);
+    }
+    for (const cls of ['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner']) {
+      this.load.image(heroFaceKey(cls), `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_face.webp`);
     }
     // Room tile sets: key cave_floor_a -> assets/env/cave/floor_a.png.
     for (const t of kThemes) {
