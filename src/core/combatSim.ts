@@ -70,6 +70,10 @@ export interface CombatConfig {
   autoSpeedMult: Map<string, number>;
   abilityPowerMult: Map<string, number>;
   abilityCooldownMult: Map<string, number>;
+  /** Testing menu: ability cast time x, by ability name (only abilities with a cast time in abilityCastTimes). */
+  abilityCastMult: Map<string, number>;
+  /** Testing menu: extra multiplier on a healer's heal (Searing Light), by class name; the smite keeps autoPowerMult only. */
+  autoHealMult: Map<string, number>;
   eliteWindupFactor: number;
   tankMeleeFirstRange: number;
   castTimeScale: number;
@@ -150,6 +154,8 @@ export function defaultCombatConfig(): CombatConfig {
     autoSpeedMult: new Map(),
     abilityPowerMult: new Map(),
     abilityCooldownMult: new Map(),
+    abilityCastMult: new Map(),
+    autoHealMult: new Map(),
     eliteWindupFactor: 1.5,
     tankMeleeFirstRange: 300.0,
     castTimeScale: 1.0,
@@ -196,6 +202,8 @@ export function cloneCombatConfig(c: CombatConfig): CombatConfig {
     autoSpeedMult: new Map(c.autoSpeedMult),
     abilityPowerMult: new Map(c.abilityPowerMult),
     abilityCooldownMult: new Map(c.abilityCooldownMult),
+    abilityCastMult: new Map(c.abilityCastMult),
+    autoHealMult: new Map(c.autoHealMult),
     readyAtStartAbilities: [...c.readyAtStartAbilities],
   };
 }
@@ -1487,7 +1495,7 @@ export class CombatSim {
       if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold) {
         if (dist(u, hurt) > range) return; // waiting to get the ally into Range
         if (!bound) u.attackTimer -= interval;
-        const power = (bound ? this.autoCastPower(u) : 1.0) * this.autoPower(u);
+        const power = (bound ? this.autoCastPower(u) : 1.0) * this.autoPower(u) * (this.cfg.autoHealMult.get(u.name) ?? 1.0);
         const healBase = kHealBase * u.autoHealScale * u.healFloorMult * power;
         const w = bound ? this.autoCastTime(u) : this.autoWindup(u);
         if (w > 0.0) { this.startCast(u, CastKind.AutoHeal, w, hurt.id, 0, healBase); return; }
@@ -1679,7 +1687,7 @@ export class CombatSim {
     if (u.summon) return 0.0;
     const w = this.cfg.abilityCastTimes.get(abilityName);
     if (w === undefined || w <= 0.0) return 0.0;
-    return Math.max(0.0, this.cfg.castTimeScale) * w * (u.elite || u.boss ? this.cfg.eliteWindupFactor : 1.0);
+    return Math.max(0.0, this.cfg.castTimeScale) * w * (this.cfg.abilityCastMult.get(abilityName) ?? 1.0) * (u.elite || u.boss ? this.cfg.eliteWindupFactor : 1.0);
   }
   private startCast(u: Unit, kind: CastKind, seconds: number, target: UnitId, tags: number, heal: number): void {
     u.castKind = kind;

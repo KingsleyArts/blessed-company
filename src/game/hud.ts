@@ -24,52 +24,70 @@ import { spriteTuning, type UnitView } from './unitView';
 
 export interface HudOptions { testing: boolean }
 
-/** A tuning row. `id` is what the saved values are keyed by, so keep ids stable; `tab`: 0 party and miracles, 1 enemies, 2 sprites and
- *  room, 3 readability. */
-interface TuneDef { id: string; name: string; step: number; min: number; max: number; tab: number }
+/** A tuning row. `id` is what the saved values are keyed by, so keep ids stable; `tab`: 0 heroes, 1 enemies, 2 party and miracles, 3 room
+ *  and readability. */
+interface TuneDef { id: string; name: string; step: number; min: number; max: number; tab: number; /** The unit whose block the row sits in (tabs 0 and 1). */ unit?: string }
+/** Tabs: heroes and enemies show one unit's block at a time (pick the unit under the tabs); the rest hold the shared rows. */
+const kTuneTabs = ['Heroes', 'Enemies', 'Party and miracles', 'Room and readability'];
+const kTuneUnits: string[][] = [['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner'], ['All enemies', 'Grunt', 'Archer', 'Brute', 'Shaman']];
+const kAllEnemies = 'All enemies';
 /** [class, basic attack name] for every hero (heroSheet kHeroOrder); the unit names the sim keys its multipliers by. */
 const kTuneHeroes: [string, string][] = [['Warrior', 'Sword Strike'], ['Mage', 'Arcane Shot'], ['Assassin', 'Twin Blades'], ['Priest', 'Searing Light'],
   ['Barbarian', 'Axe Swing'], ['Summoner', 'Spirit Bolt']];
 const kCastBound = ['Mage', 'Priest', 'Summoner'];
-/** [AbilityData id, shown name] for every hero ability. Power scales its damage, heal or buff strength (Greater Spirit: its healing). */
-const kTuneAbilities: [string, string][] = [['SpiritHeal', 'Spirit healing (standard spirit)'], ['Taunt', 'Taunt'], ['Cleave', 'Cleave'], ['Fireball', 'Fireball'], ['Execute', 'Execute'],
-  ['GroupHeal', 'Prayer of Mending'], ['Rage', 'Rage'], ['Bloodrush', 'Bloodrush'], ['GreaterSpirit', 'Greater Spirit']];
+/** [AbilityData id, shown name, owner hero, has a cast time] for every hero ability. Power scales its damage, heal or buff strength (Greater Spirit: its healing). */
+const kTuneAbilities: [string, string, string, boolean][] = [['SpiritHeal', 'Spirit healing (standard spirit)', 'Summoner', false], ['Taunt', 'Taunt', 'Warrior', false],
+  ['Cleave', 'Cleave', 'Warrior', true], ['Fireball', 'Fireball', 'Mage', true], ['Execute', 'Execute', 'Assassin', true], ['GroupHeal', 'Prayer of Mending', 'Priest', false],
+  ['Rage', 'Rage', 'Barbarian', false], ['Bloodrush', 'Bloodrush', 'Barbarian', false], ['GreaterSpirit', 'Greater Spirit', 'Summoner', true]];
+// The first ten rows are read by position in tunePush (and keep their order); every row is saved by id.
 const kTune: TuneDef[] = [
-  { id: 'enemyMult', name: 'Enemy health and damage x', step: 0.1, min: 0.3, max: 4, tab: 1 },
-  { id: 'castTime', name: 'Cast times and windups x (0 = instant)', step: 0.25, min: 0, max: 3, tab: 0 },
-  { id: 'partyHeal', name: 'Party healing x', step: 0.1, min: 0, max: 3, tab: 0 },
-  { id: 'gaugeFill', name: 'Miracle gauge fill per hit', step: 0.05, min: 0.05, max: 2, tab: 0 },
-  { id: 'miracleCost', name: 'Miracle costs x', step: 0.25, min: 0.25, max: 3, tab: 0 },
-  { id: 'smiteRadius', name: 'Smite radius (world units)', step: 25, min: 100, max: 900, tab: 0 },
-  { id: 'hurtSeconds', name: 'Hurt sprite shows for (s)', step: 0.05, min: 0.05, max: 1.5, tab: 1 },
-  { id: 'hurtCooldown', name: 'Hurt sprite cooldown (s between flinches)', step: 0.25, min: 0, max: 5, tab: 1 },
-  { id: 'enemySprites', name: 'All enemy sprites x', step: 0.05, min: 0.5, max: 2, tab: 2 },
+  { id: 'enemyMult', name: 'Enemy health and damage x', step: 0.1, min: 0.3, max: 4, tab: 1, unit: kAllEnemies },
+  { id: 'castTime', name: 'Cast times and windups x (0 = instant)', step: 0.25, min: 0, max: 3, tab: 2 },
+  { id: 'partyHeal', name: 'Party healing x', step: 0.1, min: 0, max: 3, tab: 2 },
+  { id: 'gaugeFill', name: 'Miracle gauge fill per hit', step: 0.05, min: 0.05, max: 2, tab: 2 },
+  { id: 'miracleCost', name: 'Miracle costs x', step: 0.25, min: 0.25, max: 3, tab: 2 },
+  { id: 'smiteRadius', name: 'Smite radius (world units)', step: 25, min: 100, max: 900, tab: 2 },
+  { id: 'hurtSeconds', name: 'Hurt sprite shows for (s)', step: 0.05, min: 0.05, max: 1.5, tab: 1, unit: kAllEnemies },
+  { id: 'hurtCooldown', name: 'Hurt sprite cooldown (s between flinches)', step: 0.25, min: 0, max: 5, tab: 1, unit: kAllEnemies },
+  { id: 'enemySprites', name: 'All enemy sprites x', step: 0.05, min: 0.5, max: 2, tab: 1, unit: kAllEnemies },
   { id: 'partySprites', name: 'All party sprites x', step: 0.05, min: 0.5, max: 2, tab: 2 },
   ...['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner', 'Grunt', 'Archer', 'Brute', 'Shaman'].map((n) => ({
-    id: `size:${n}`, name: `${n === 'Priest' ? 'Priestess' : n} size x`, step: 0.05, min: 0.3, max: 3, tab: 2,
+    id: `size:${n}`, name: 'Size x', step: 0.05, min: 0.3, max: 3, tab: kTuneUnits[0].includes(n) ? 0 : 1, unit: n,
   })),
-  { id: 'hazeDepth', name: 'Room haze depth (share of view)', step: 0.02, min: 0, max: 0.5, tab: 2 },
-  { id: 'hazeAlpha', name: 'Room haze darkness at edge', step: 0.05, min: 0, max: 1, tab: 2 },
+  { id: 'hazeDepth', name: 'Room haze depth (share of view)', step: 0.02, min: 0, max: 0.5, tab: 3 },
+  { id: 'hazeAlpha', name: 'Room haze darkness at edge', step: 0.05, min: 0, max: 1, tab: 3 },
   // Readability switches (director, Nov 20: pile-ups): 1 on, 0 off; shown as On / Off.
   { id: 'show:merge', name: 'Merge combat numbers (one total per unit, heals to the side)', step: 1, min: 0, max: 1, tab: 3 },
   { id: 'show:bars', name: 'Fewer health bars (enemies just hit, heroes when low; thinner)', step: 1, min: 0, max: 1, tab: 3 },
   { id: 'show:rings', name: 'Rings under feet (gold party, red enemies)', step: 1, min: 0, max: 1, tab: 3 },
-  // Appended last: tunePush reads the first rows by position. Searing Light heals while the most hurt ally is below this share of max HP.
-  { id: 'smiteThreshold', name: 'Searing Light heals below (ally HP share; above it, it smites)', step: 0.05, min: 0, max: 1, tab: 0 },
+  // Appended after the positional rows. Searing Light heals while the most hurt ally is below this share of max HP.
+  { id: 'smiteThreshold', name: 'Heals below (ally HP share; above it, it smites)', step: 0.05, min: 0, max: 1, tab: 0, unit: 'Priest' },
   // Enemy growth per floor, health and damage apart (director Nov 22): each floor multiplies by this (shipped 1.25 for both).
-  { id: 'floorHealth', name: 'Enemy health growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1 },
-  { id: 'floorDamage', name: 'Enemy damage growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1 },
-  // Heroes' basic attack / heal (tab 4) and abilities (tab 5). Adding a hero or an ability: add it to these two lists so it is tunable.
+  { id: 'floorHealth', name: 'Enemy health growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1, unit: kAllEnemies },
+  { id: 'floorDamage', name: 'Enemy damage growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1, unit: kAllEnemies },
+  // Heroes' basic attack / heal and abilities, each in its hero's block. Adding a hero or an ability: add it to these two lists so it is tunable.
   ...kTuneHeroes.flatMap(([cls, attack]) => [
-    { id: `atkPower:${cls}`, name: `${heroLabel(cls)} ${attack} power x`, step: 0.05, min: 0.1, max: 4, tab: 4 },
-    { id: `atkSpeed:${cls}`, name: `${heroLabel(cls)} ${attack} speed x ${kCastBound.includes(cls) ? '(cast speed)' : '(attacks per second)'}`, step: 0.05, min: 0.25, max: 4, tab: 4 },
+    { id: `atkPower:${cls}`, name: cls === 'Priest' ? `${attack} power x (heal and smite)` : `${attack} power x`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls },
+    { id: `atkSpeed:${cls}`, name: `${attack} ${kCastBound.includes(cls) ? 'cast speed x (higher = faster cast)' : 'attacks per second x'}`, step: 0.05, min: 0.25, max: 4, tab: 0, unit: cls },
+    ...(cls === 'Priest' ? [{ id: 'healMult:Priest', name: `${attack} heal x (heal only, on top of power)`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls }] : []),
   ]),
-  ...kTuneAbilities.flatMap(([id, name]) => [
-    { id: `abPower:${id}`, name: `${name} power x`, step: 0.05, min: 0.1, max: 4, tab: 5 },
-    ...(id === 'SpiritHeal' ? [] : [{ id: `abCooldown:${id}`, name: `${name} cooldown x`, step: 0.1, min: 0.1, max: 4, tab: 5 }]), // the standard spirit has no cooldown
+  ...kTuneAbilities.flatMap(([id, name, owner, cast]) => [
+    { id: `abPower:${id}`, name: `${name} power x`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: owner },
+    ...(id === 'SpiritHeal' ? [] : [{ id: `abCooldown:${id}`, name: `${name} cooldown x`, step: 0.1, min: 0.1, max: 4, tab: 0, unit: owner }]), // the standard spirit has no cooldown
+    ...(cast ? [{ id: `abCast:${id}`, name: `${name} cast time x (0 = instant)`, step: 0.1, min: 0, max: 4, tab: 0, unit: owner }] : []),
   ]),
 ];
-const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites and room', 'Readability', 'Attacks and speed', 'Abilities'];
+/** Where a row sits in its unit's block: attack, then abilities in list order, then size. */
+const tuneOrder = (d: TuneDef): number => {
+  const [kind, key] = d.id.split(':');
+  if (kind === 'atkPower') return 0;
+  if (kind === 'healMult') return 1;
+  if (kind === 'atkSpeed') return 2;
+  if (d.id === 'smiteThreshold') return 3;
+  if (kind === 'abPower' || kind === 'abCooldown' || kind === 'abCast') return 10 + kTuneAbilities.findIndex((a) => a[0] === key) * 3 + (kind === 'abPower' ? 0 : kind === 'abCooldown' ? 1 : 2);
+  if (kind === 'size') return 99;
+  return 5;
+};
 const tuneRow = (id: string): number => kTune.findIndex((d) => d.id === id);
 
 /** The icon and colour of each ability's tile (placeholder glyphs from the HUD's icon set until there is art). */
@@ -101,6 +119,8 @@ export class Hud {
   private flashRefused = false;
   private armed: MiracleKind | undefined;
   private tuneTab = 0;
+  /** The unit shown on the Heroes and Enemies tabs (an index into kTuneUnits). */
+  private tuneUnit = [0, 0];
   /** Frames and badges drawn over the hero face images (depth 510), under the text (600). */
   private gTop: Phaser.GameObjects.Graphics;
   private scene: Phaser.Scene;
@@ -917,6 +937,8 @@ export class Hud {
       else if (kind === 'atkSpeed') c.autoSpeedMult.set(key, v);
       else if (kind === 'abPower') c.abilityPowerMult.set(key, v);
       else if (kind === 'abCooldown') c.abilityCooldownMult.set(key, v);
+      else if (kind === 'abCast') c.abilityCastMult.set(key, v);
+      else if (kind === 'healMult') c.autoHealMult.set(key, v);
     });
   }
 
@@ -969,6 +991,7 @@ export class Hud {
         else { const u = sim!.getUnit(id)!; u.hp = sim!.maxHp(u); }
       }
     } else if (which.startsWith('Tab')) this.tuneTab = Number(which.slice(3));
+    else if (which.startsWith('Unit')) this.tuneUnit[this.tuneTab] = Number(which.slice(4));
     else if (which === 'Copy') {
       const text = JSON.stringify(this.tuneChanged(), null, 1);
       void navigator.clipboard?.writeText(text).catch(() => undefined);
@@ -1004,15 +1027,18 @@ ${text}`);
 
   private drawTune(L: Layout, S: number): void {
     if (!this.tuneInit) this.tuneClick('init');
-    const rows = kTune.map((d, i) => ({ d, i })).filter((r) => r.d.tab === this.tuneTab);
+    const units = kTuneUnits[this.tuneTab] as string[] | undefined;
+    const unit = units ? units[Math.min(this.tuneUnit[this.tuneTab] ?? 0, units.length - 1)] : undefined;
+    const rows = kTune.map((d, i) => ({ d, i })).filter((r) => r.d.tab === this.tuneTab && (unit === undefined || r.d.unit === unit))
+      .sort((a, b) => tuneOrder(a.d) - tuneOrder(b.d));
     const area = L.roomArea;
     // Long tabs (Sprites) lay their rows out in two columns so the panel still fits a phone held sideways.
-    const cols = rows.length > 6 ? 2 : 1;
+    const cols = rows.length > (units ? 4 : 6) ? 2 : 1;   // a unit block sits under the unit chips, so it goes to two columns sooner
     const perCol = Math.ceil(rows.length / cols);
     const w = cols > 1 ? area.w * 0.96 : Math.min(area.w * 0.9, Math.max(area.w * 0.6, 420));
     const rowH = Math.max(18, area.h * 0.075);
     const pad = rowH * 0.5;
-    const h = pad + rowH * 1.2 + rowH * 1.1 + perCol * rowH * 1.15 + rowH * 1.4 + rowH * 1.4 + rowH + pad;
+    const h = pad + rowH * 1.2 + rowH * 1.1 + (units ? rowH * 2.1 : 0) + perCol * rowH * 1.15 + rowH * 1.4 + rowH * 1.4 + rowH + pad;
     const panel = new Rect(area.x + (area.w - w) / 2, area.y + Math.max(0, (area.h - h) / 2), w, Math.min(h, area.h));
     box(this.g, panel, lin(0.03, 0.03, 0.05), 0.93);
     outline(this.g, panel, lin(1, 0.82, 0.35), 2);
@@ -1027,7 +1053,20 @@ ${text}`);
       this.texts.centered(`tu.tab${k}`, n, tabs[k], kBaseFontPx * 1.15 * S, kTextLight);
       this.hit(tabs[k], 3, () => this.tuneClick(`Tab${k}`));
     });
-    const top = tabs[0].bottom() + pad * 0.5;
+    let top = tabs[0].bottom() + pad * 0.5;
+    if (units) {   // one unit at a time: pick it here, its block is below
+      const uw = (panel.w - 2 * pad - pad * 0.4 * (units.length - 1)) / units.length;
+      units.forEach((n, k) => {
+        const r = new Rect(panel.x + pad + k * (uw + pad * 0.4), top, uw, rowH * 0.95);
+        const on = units[Math.min(this.tuneUnit[this.tuneTab] ?? 0, units.length - 1)] === n;
+        this.frame(r, on ? lin(0.3, 0.26, 0.05) : lin(0.07, 0.05, 0.07), 0.97, r.contains(this.mouse.x, this.mouse.y), on);
+        this.texts.centered(`tu.u${k}`, displayName(n), r, kBaseFontPx * 1.05 * S, kTextLight);
+        this.hit(r, 3, () => this.tuneClick(`Unit${k}`));
+      });
+      const head = new Rect(panel.x + pad, top + rowH * 1.05, panel.w - 2 * pad, rowH * 0.95);
+      this.texts.centered('tu.head', `${displayName(unit ?? '')}${unit === kAllEnemies ? ' (every enemy)' : ''}`, head, kBaseFontPx * 1.3 * S, lin(1, 0.9, 0.5));
+      top += rowH * 2.1;
+    }
     let y = top;
     const btn = rowH * 0.95;
     const colW = (panel.w - 2 * pad - pad * (cols - 1)) / cols;
@@ -1052,11 +1091,9 @@ ${text}`);
     y = top + perCol * rowH * 1.15 + rowH * 0.2;
     const aw = (panel.w - 2 * pad - pad) / 3;
     const copy = this.copiedLeft > 0 ? 'Copied (also in the console)' : 'Copy changed values';
-    const labels = [['Fill miracle gauge', 'Heal party to full', 'Reset tuning'], ['Kill all enemies', 'Heal enemies to full', 'Reset tuning'],
-      [copy, 'Kill all enemies', 'Reset tuning'], [copy, 'Kill all enemies', 'Reset tuning'], [copy, 'Kill all enemies', 'Reset tuning'],
-      [copy, 'Kill all enemies', 'Reset tuning']][this.tuneTab];
-    const boxes = [['Fill', 'Heal', 'Reset'], ['KillAll', 'HealFoes', 'Reset'], ['Copy', 'KillAll', 'Reset'], ['Copy', 'KillAll', 'Reset'], ['Copy', 'KillAll', 'Reset'],
-      ['Copy', 'KillAll', 'Reset']][this.tuneTab];
+    const labels = [[copy, 'Kill all enemies', 'Reset tuning'], ['Kill all enemies', 'Heal enemies to full', 'Reset tuning'],
+      ['Fill miracle gauge', 'Heal party to full', 'Reset tuning'], [copy, 'Kill all enemies', 'Reset tuning']][this.tuneTab];
+    const boxes = [['Copy', 'KillAll', 'Reset'], ['KillAll', 'HealFoes', 'Reset'], ['Fill', 'Heal', 'Reset'], ['Copy', 'KillAll', 'Reset']][this.tuneTab];
     for (let k = 0; k < 3; ++k) {
       const r = new Rect(panel.x + pad + k * (aw + pad * 0.5), y, aw, rowH * 1.1);
       this.frame(r, lin(0.1, 0.09, 0.2), 0.95, r.contains(this.mouse.x, this.mouse.y), false);
