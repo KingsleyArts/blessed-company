@@ -1021,7 +1021,7 @@ export class Hud {
     else if (which === 'KillAll' || which === 'HealFoes') {
       const foes = sim ? sim.getUnits().filter((u) => u.enemy && !u.removed && u.alive).map((u) => u.id) : [];
       for (const id of foes) {
-        if (which === 'KillAll') sim!.dealDamage(-1, id, 1e9, 1);
+        if (which === 'KillAll') sim!.debugKill(id);
         else { const u = sim!.getUnit(id)!; u.hp = sim!.maxHp(u); }
       }
     } else if (which.startsWith('Tab')) this.tuneTab = Number(which.slice(3));

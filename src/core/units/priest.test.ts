@@ -5,7 +5,8 @@ import { Behavior, CombatSim, FightState, defaultCombatConfig, kHealBase, runFig
 import { CombatData } from '../combatData';
 import { DamageTag, kNoUnit, type DamageDealt, type UnitId } from '../eventBus';
 import { ModKind, ModSource, StatId } from '../statResolver';
-import { CHECK, NEAR, pinnedData } from '../combatTestKit';
+import { CHECK, NEAR, StepSeconds, pinnedData } from '../combatTestKit';
+import { installShippedCastTimes } from '../castTimes';
 
 const data = pinnedData;
 const Cls = (n: string) => data.findClassRow(n)!;
@@ -708,5 +709,76 @@ describe('units: Priest fights', () => {
     const waved = runPack(['Warrior', 'Priest', 'Mage'], pack, 2, seeds, [{ atSeconds: 12, enemies: ['Grunt', 'Archer'], floorNumber: 2 }]);
     CHECK(withP.timeouts === 0 && without.timeouts === 0 && elite2.timeouts === 0 && waved.timeouts === 0);
     CHECK(withP.n === seeds);
+  });
+  it('healerSmitesWhenIdle: walks to a more hurt ally out of Range and heals them, unless the Tank is low', () => {
+    const run = (flag: boolean, tankHp: number): { tank: number; far: number } => {
+      const cfg = defaultCombatConfig();
+      cfg.healerSmitesWhenIdle = flag;
+      const s = new CombatSim(data, 1, cfg);
+      const p = s.addPartyUnit('Priest');
+      const tank = s.addPartyUnit('Warrior');
+      const far = s.addPartyUnit('Mage');
+      Freeze(s, tank); Freeze(s, far);
+      Place(s, p, 0, 0); Place(s, tank, 300, 0); Place(s, far, -1100, 0);
+      const g = s.addEnemy('Grunt', 1);
+      Freeze(s, g);
+      Place(s, g, 1100, 600);
+      s.startFight();
+      s.mutableUnit(tank)!.hp = tankHp * s.maxHp(s.getUnit(tank)!);
+      s.mutableUnit(far)!.hp = 0.1 * s.maxHp(s.getUnit(far)!);
+      const r = { tank: 0, far: 0 };
+      s.getBus().subscribe('HealApplied', (e) => { if (e.source === p && e.target === tank) r.tank++; if (e.source === p && e.target === far) r.far++; });
+      StepSeconds(s, 8);
+      return r;
+    };
+    const walk = run(true, 0.5);
+    CHECK(walk.far > 0);   // she walks to the more hurt ally instead of ignoring them
+    const low = run(true, 0.3);
+    CHECK(low.tank > 0);   // a low Tank takes priority
+  });
+  it('healerSmitesWhenIdle: a cornered Priestess does not shuffle toward a hurt ally she cannot reach safely', () => {
+    const run = (flag: boolean): { flips: number; hits: number } => {
+      const cfg = defaultCombatConfig();
+      installShippedCastTimes(cfg);
+      cfg.healerSmitesWhenIdle = flag;
+      const s = new CombatSim(data, 1, cfg);
+      const p = s.addPartyUnit('Priest');
+      const w = s.addPartyUnit('Warrior');
+      Freeze(s, w);
+      Place(s, p, -1190, 0);
+      Place(s, w, -150, 0);
+      const g = s.addEnemy('Grunt', 1);
+      Freeze(s, g);
+      Place(s, g, -720, 0);   // between them, inside her retreat distance
+      s.startFight();
+      s.mutableUnit(w)!.hp = 0.3 * s.maxHp(s.getUnit(w)!);
+      let hits = 0;
+      s.getBus().subscribe('DamageDealt', (e) => { if (e.source === p) hits++; });
+      let lastX = s.getUnit(p)!.x, dir = 0, flips = 0;
+      for (let t = 0; t < 30 * 12; ++t) {
+        s.step();
+        const x = s.getUnit(p)!.x, d = Math.abs(x - lastX) < 0.01 ? 0 : Math.sign(x - lastX);
+        if (d !== 0) { if (dir !== 0 && d !== dir) ++flips; dir = d; }
+        lastX = x;
+      }
+      return { flips, hits };
+    };
+    const off = run(false), on = run(true);
+    CHECK(on.flips <= 2);
+    CHECK(off.flips > 10 && off.hits === 0);   // the old rule paced back and forth and never cast
+    CHECK(on.hits > 0);   // she fights from where she stands
+  });
+});
+
+describe('debugKill', () => {
+  it('kills a living enemy outright and ends the fight', () => {
+    const s = new CombatSim(data, 1, defaultCombatConfig());
+    s.addPartyUnit('Warrior');
+    const g = s.addEnemy('Grunt', 1);
+    s.startFight();
+    s.debugKill(g);
+    CHECK(!s.getUnit(g)!.alive);
+    StepSeconds(s, 1);
+    CHECK(s.getState() === FightState.Won);
   });
 });
