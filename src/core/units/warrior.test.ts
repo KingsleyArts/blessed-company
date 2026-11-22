@@ -24,7 +24,7 @@ describe('units: Warrior', () => {
     const t = data.findAbility('Taunt');
     CHECK(t && t.EffectIds.join('|') === 'Taunt_3|Taunt_1|Taunt_2');   // director Nov 20: threat to highest +1, then the forced attack
     NEAR(EffectValue('Taunt_1'), 1, 1e-9);
-    CHECK(w.ExtraAbilityIds.length === 0);
+    CHECK(w.ExtraAbilityIds.join('|') === 'Cleave');   // Nov 22: the second ability slot
     const forced = data.findEffect('Taunt_3');
     CHECK(forced && forced.Type === 'ApplyModifier' && forced.Stat === 'Taunt' && forced.Duration > 0);
     CHECK(t && forced && t.Cooldown > forced.Duration);

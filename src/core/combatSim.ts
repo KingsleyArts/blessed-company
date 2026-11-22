@@ -109,6 +109,8 @@ export interface CombatConfig {
   greaterSpiritPersists: boolean;
   /** A party healer only holds position for an ally who needs a heal (below its smite threshold); otherwise it closes on its target to smite. */
   healerSmitesWhenIdle: boolean;
+  /** An enemy healer that is the last enemy standing attacks instead of healing itself. */
+  lastHealerAttacks: boolean;
   readyAtStartAbilities: string[];
   logCapacity: number;
 }
@@ -189,6 +191,7 @@ export function defaultCombatConfig(): CombatConfig {
     greaterSpiritHealScale: 1.5,
     greaterSpiritPersists: false,
     healerSmitesWhenIdle: false,
+    lastHealerAttacks: false,
     readyAtStartAbilities: ['Taunt'],
     logCapacity: 4096,
   };
@@ -1498,7 +1501,8 @@ export class CombatSim {
     if (u.summon) tags |= DamageTag.Summon;
     if (u.healer && !u.spiritHeals) {
       // Smite rule: heal the lowest-HP ally while any is below the threshold, else smite.
-      const hurt = this.lowestHpAlly(u, true);
+      const alone = this.cfg.lastHealerAttacks && u.enemy && !this.allies(u).some((a) => a.id !== u.id);   // the last enemy: damage beats healing itself
+      const hurt = alone ? undefined : this.lowestHpAlly(u, true);
       if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold) {
         if (dist(u, hurt) > range) return; // waiting to get the ally into Range
         if (!bound) u.attackTimer -= interval;

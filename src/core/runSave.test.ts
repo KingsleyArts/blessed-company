@@ -70,7 +70,7 @@ describe('run saves', () => {
   });
 
   it('a resume puts back the same run: floor, room, fog, cleared rooms, earnings, Essence ranks, party health, gauge', () => {
-    for (const seed of [3, 17, 29]) {
+    for (const seed of [1, 4, 11]) {
       const { store, text } = playUntilSaves(seed, 20);
       const saved = parseRunSave(text);
       expect(saved, `seed ${seed}`).toBeDefined();

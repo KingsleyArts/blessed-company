@@ -388,6 +388,7 @@ export class RunManager {
     cfg.enemyStatMult = Math.fround(this.opts.enemyMult);
     if (this.opts.castTimes) installShippedCastTimes(cfg);
     cfg.randomEnemySpawn = true;
+    cfg.lastHealerAttacks = true;   // a lone Shaman attacks instead of healing itself
     cfg.healerSmitesWhenIdle = true;   // a Priest with nobody to heal closes in and casts Searing Light
     cfg.greaterSpiritPersists = true;   // a Greater Spirit waits out the gap between fights
     return cfg;

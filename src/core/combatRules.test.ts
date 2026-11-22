@@ -5,7 +5,7 @@ import { DamageTag, kNoUnit } from './eventBus';
 import { hypot } from './fmath';
 import { ModSource, StatId } from './statResolver';
 import {
-  CHECK, Cls, EffectDuration, EffectValue, Enemy, Freeze, NEAR, Place, StepTicks, Tough, cloneData, data,
+  CHECK, Cls, EffectDuration, EffectValue, Enemy, Freeze, NEAR, Place, StepTicks, Tough, cloneData, data, legacyHeroData,
 } from './combatTestKit';
 
 const lround = (v: number): number => (v < 0 ? -Math.round(-v) : Math.round(v));
@@ -15,7 +15,7 @@ const forcedOnlyTaunt = () => {
   d.findAbility('Taunt')!.EffectIds = ['Taunt_3', 'Taunt_2'];
   return d;
 };
-const grantCleave = (s: CombatSim, w: number): void => { s.mutableUnit(w)!.extraAbilities.push({ id: 'Cleave', timer: 0 }); };
+const grantCleave = (s: CombatSim, w: number): void => { const u = s.mutableUnit(w)!; if (!u.extraAbilities.some((x) => x.id === 'Cleave')) u.extraAbilities.push({ id: 'Cleave', timer: 0 }); };   // the Warrior has it from the data since Nov 22
 
 describe('combat: shared-core pass', () => {
   it('AttackRateEqualsAttackPerSecWithoutDroppingTheRemainder', () => {
@@ -132,7 +132,7 @@ describe('combat: shared-core pass', () => {
     const c = new CombatSim(d2, 1);
     NEAR(c.getUnit(c.addPartyUnit('Priest'))!.smiteThreshold, defaultCombatConfig().smiteThreshold, 1e-12);
     CHECK(Cls('Summoner').AbilityId === 'GreaterSpirit' && Cls('Summoner').ExtraAbilityIds.length === 0);
-    CHECK(Cls('Warrior').ExtraAbilityIds.length === 0);
+    CHECK(Cls('Warrior').ExtraAbilityIds.join('|') === 'Cleave');
   });
   it('RangedUnitsKeepRetreatingUntilPreferredDistMin', () => {
     for (const cls of ['Mage', 'Priest', 'Summoner']) {
@@ -169,9 +169,9 @@ describe('combat: shared-core pass', () => {
   });
 });
 
-describe('combat: Warrior Cleave (disabled; mechanism kept proven)', () => {
-  it('CleaveIsDisabledButItsRowsStayInData', () => {
-    CHECK(Cls('Warrior').ExtraAbilityIds.length === 0);
+describe('combat: Warrior Cleave (second ability slot)', () => {
+  it('CleaveIsTheWarriorsSecondAbilityAndItsRowsAreInData', () => {
+    CHECK(Cls('Warrior').ExtraAbilityIds.join('|') === 'Cleave');
     CHECK(Cls('Warrior').AbilityId === 'Taunt');
     const c = data.findAbility('Cleave');
     CHECK(c && c.Cooldown > 0 && c.EffectIds.length);
@@ -277,7 +277,7 @@ describe('combat: Warrior Cleave (disabled; mechanism kept proven)', () => {
       CHECK(a.state === FightState.Won);
       CHECK(a.logText.includes('casts Cleave'));
     }
-    CHECK(!runFightHeadless(data, 1, ['Warrior', 'Mage'], ['Grunt', 'Grunt', 'Grunt']).logText.includes('casts Cleave'));
+    CHECK(!runFightHeadless(legacyHeroData, 1, ['Warrior', 'Mage'], ['Grunt', 'Grunt', 'Grunt']).logText.includes('casts Cleave'));
   });
 });
 
