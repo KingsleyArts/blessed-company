@@ -72,16 +72,22 @@ describe('healer Summoner', () => {
     CHECK(Math.max(...heals) > 0, 'healed');
   });
 
-  it('SpiritsWalkToTheAllyTheyHealAndBackWhenNobodyIsHurt', () => {
+  it('SpiritsSitBetweenTheSummonerAndTheAllyTheyHealAndIdleInsideASmallRadius', () => {
     const { s, su, w } = scene(0.3);
     Place(s, w, 700, -300); // far from the Summoner at the origin
     s.mutableUnit(w)!.hp = 5;
     const spirit = s.getUnits().find((u) => u.weapon && u.owner === su)!;
     const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
-    const start = dist(spirit, s.getUnit(w)!);
-    StepSeconds(s, 2);
-    CHECK(dist(spirit, s.getUnit(w)!) < start * 0.5, 'moved toward the hurt ally');
+    StepSeconds(s, 3);
+    const mid = { x: (s.getUnit(su)!.x + s.getUnit(w)!.x) / 2, y: (s.getUnit(su)!.y + s.getUnit(w)!.y) / 2 };
+    const r = s.config().spiritHealIdleRadius;
+    CHECK(dist(spirit, mid) <= r * 0.25 + 1, 'midway between the Summoner and the ally');
     CHECK(dist(spirit, s.getUnit(su)!) > 300, 'not glued to the Summoner');
+    // A target switch that keeps the ideal spot inside the idle radius moves nothing.
+    const before = { x: spirit.x, y: spirit.y };
+    Place(s, w, 700 + r, -300); // the midpoint shifts by r / 2
+    StepSeconds(s, 1);
+    CHECK(dist(spirit, before) < 1e-6, 'stayed put inside the radius');
     s.mutableUnit(w)!.hp = s.maxHp(s.getUnit(w)!); // everyone healthy: it drifts home
     StepSeconds(s, 4);
     CHECK(dist(spirit, s.getUnit(su)!) < 250, 'back beside the Summoner');

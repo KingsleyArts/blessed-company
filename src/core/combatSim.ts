@@ -90,8 +90,8 @@ export interface CombatConfig {
   greaterSpiritRange: number;
   /** DRAFT healing spirits (healer Summoner): heal per spirit pulse = kHealBase x scale (x the owner's Spirit Damage stat as a flat bonus); pulses at the spirit's attack rate. */
   spiritHealScale: number;
-  /** How close (world units) a healing spirit stands to the ally it is healing. */
-  spiritHealStandOff: number;
+  /** A healing spirit that is already this close (world units) to its ideal spot (midway between the Summoner and the ally) does not move. */
+  spiritHealIdleRadius: number;
   greaterSpiritHealScale: number;
   readyAtStartAbilities: string[];
   logCapacity: number;
@@ -161,7 +161,7 @@ export function defaultCombatConfig(): CombatConfig {
     greaterSpiritMoveSpeed: 300.0,
     greaterSpiritRange: 150.0,
     spiritHealScale: 0.5,
-    spiritHealStandOff: 90.0,
+    spiritHealIdleRadius: 80.0,
     greaterSpiritHealScale: 1.5,
     readyAtStartAbilities: ['Taunt'],
     logCapacity: 4096,
@@ -215,6 +215,8 @@ export class Unit {
   /** Healer-Summoner (ClassData AutoActionId SpiritBolt, director Nov 21): the Summoner fires its own bolt and its spirits heal allies
    *  instead of attacking. Set on the Summoner and copied to its spirits. */
   spiritHeals = false;
+  /** A healing spirit is walking to its spot (see moveHealSpirit). */
+  spiritWalking = false;
   tauntLeft = 0;
   tauntForced = false;
   tauntEnemiesLeft = 0;
@@ -1443,19 +1445,24 @@ export class CombatSim {
     this.applyHeal(owner.id, hurt.id, kHealBase * scale + Math.max(0.0, owner.stats.get(StatId.SpiritDamage)));
   }
 
-  /** A healing spirit walks to the ally it will heal next (the most hurt one) and stops beside them; with nobody hurt it drifts back to
-   *  its Summoner. It never chases enemies. */
+  /** A healing spirit sits midway between its Summoner and the ally it will heal next (the most hurt one); with nobody hurt (or the Summoner
+   *  herself hurt) it sits beside the Summoner. Inside spiritHealIdleRadius of that spot it stays put, so switching targets does not make it
+   *  shuffle. It never chases enemies. */
   private moveHealSpirit(s: Unit): void {
     const o = this.getUnit(s.owner);
     if (!o || !o.alive) return;
     const hurt = this.lowestHpAlly(o, true);
     const off = this.cfg.spiritSpawnOffset;
-    const tx = hurt ? hurt.x : o.x + off, ty = hurt ? hurt.y + off * 0.5 : o.y;
-    const stop = hurt ? this.cfg.spiritHealStandOff : 0.0;
+    const other = hurt && hurt.id !== o.id ? hurt : undefined;
+    const tx = other ? (o.x + other.x) * 0.5 : o.x + off, ty = other ? (o.y + other.y) * 0.5 : o.y;
+    const stop = this.cfg.spiritHealIdleRadius;
     const dx = tx - s.x, dy = ty - s.y;
     const d = hypot(dx, dy);
-    if (d <= stop + 1e-9) return;
-    const step = Math.min(s.moveSpeed * this.cfg.dt, d - stop);
+    // Leaving the idle radius starts a walk that carries on until the spirit is well inside it, so it settles instead of creeping.
+    if (d <= stop * 0.25) s.spiritWalking = false;
+    else if (d > stop) s.spiritWalking = true;
+    if (!s.spiritWalking) return;
+    const step = Math.min(s.moveSpeed * this.cfg.dt, d);
     s.x += (dx / d) * step;
     s.y += (dy / d) * step;
     this.clampToArena(s);
