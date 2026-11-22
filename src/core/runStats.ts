@@ -51,7 +51,7 @@ export class RunStats {
         const owner = sim.getUnit(src.owner);
         if (!owner) return;
         hero = owner.name;
-        label = src.name === 'GreaterSpirit' ? 'Greater Spirit' : (e.tags & DamageTag.Smite) !== 0 ? 'Spirit smite' : 'Spirit';
+        label = src.name === 'GreaterSpirit' ? 'Greater Spirit' : (e.tags & DamageTag.Smite) !== 0 ? 'Spirit bolt' : 'Spirit';
       } else if (e.ability) label = skillOf(e.ability, 'ability').name;
       else if ((e.tags & DamageTag.Thorns) !== 0) label = 'Thorns';
       else label = attackName(hero);

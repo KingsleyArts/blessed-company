@@ -334,7 +334,7 @@ export class UnitView {
     else img.setTint(pose.tint);
   }
 
-  /** Autos in flight: Arcane Shot (violet), Searing Light's smite (gold) and Spirit Bolt (green), a bright core in a soft glow with a short trail. */
+  /** Autos in flight: Arcane Shot (violet), Searing Light's bolt (gold) and Spirit Bolt (green), a bright core in a soft glow with a short trail. */
   private drawProjectiles(sim: CombatSim, scale: number): void {
     const g = this.overlay;
     const off = this.rm.isStaged() ? this.room.stagedOffset() : { x: 0, y: 0 };

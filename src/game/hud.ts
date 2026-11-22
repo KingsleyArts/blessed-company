@@ -61,13 +61,13 @@ const kTune: TuneDef[] = [
   { id: 'show:bars', name: 'Fewer health bars (enemies just hit, heroes when low; thinner)', step: 1, min: 0, max: 1, tab: 3 },
   { id: 'show:rings', name: 'Rings under feet (gold party, red enemies)', step: 1, min: 0, max: 1, tab: 3 },
   // Appended after the positional rows. Searing Light heals while the most hurt ally is below this share of max HP.
-  { id: 'smiteThreshold', name: 'Heals below (ally HP share; above it, it smites)', step: 0.05, min: 0, max: 1, tab: 0, unit: 'Priest' },
+  { id: 'smiteThreshold', name: 'Heals below (ally HP share; above it, she casts Searing Light)', step: 0.05, min: 0, max: 1, tab: 0, unit: 'Priest' },
   // Enemy growth per floor, health and damage apart (director Nov 22): each floor multiplies by this (shipped 1.25 for both).
   { id: 'floorHealth', name: 'Enemy health growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1, unit: kAllEnemies },
   { id: 'floorDamage', name: 'Enemy damage growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1, unit: kAllEnemies },
   // Heroes' basic attack / heal and abilities, each in its hero's block. Adding a hero or an ability: add it to these two lists so it is tunable.
   ...kTuneHeroes.flatMap(([cls, attack]) => [
-    { id: `atkPower:${cls}`, name: cls === 'Priest' ? `${attack} damage x (the smite)` : `${attack} power x`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls },
+    { id: `atkPower:${cls}`, name: cls === 'Priest' ? `${attack} damage x` : `${attack} power x`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls },
     { id: `atkSpeed:${cls}`, name: `${attack} ${kCastBound.includes(cls) ? 'cast speed x (higher = faster cast)' : 'attacks per second x'}`, step: 0.05, min: 0.25, max: 4, tab: 0, unit: cls },
     ...(cls === 'Priest' ? [
       { id: 'healMult:Priest', name: 'Heal amount x', step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls },
