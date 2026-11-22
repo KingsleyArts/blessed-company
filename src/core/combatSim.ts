@@ -107,6 +107,8 @@ export interface CombatConfig {
   greaterSpiritHealScale: number;
   /** A greater spirit that outlives a won fight waits (duration and recast cooldown paused) for the next one. Off keeps the C++ parity behaviour. */
   greaterSpiritPersists: boolean;
+  /** A party healer only holds position for an ally who needs a heal (below its smite threshold); otherwise it closes on its target to smite. */
+  healerSmitesWhenIdle: boolean;
   readyAtStartAbilities: string[];
   logCapacity: number;
 }
@@ -186,6 +188,7 @@ export function defaultCombatConfig(): CombatConfig {
     spiritHealIdleRadius: 80.0,
     greaterSpiritHealScale: 1.5,
     greaterSpiritPersists: false,
+    healerSmitesWhenIdle: false,
     readyAtStartAbilities: ['Taunt'],
     logCapacity: 4096,
   };
@@ -1408,13 +1411,14 @@ export class CombatSim {
       else return g;
     }
     if (u.behavior === Behavior.Backline) {
-      const hurt = this.lowestHpAlly(u, false);
+      let hurt = this.lowestHpAlly(u, false);
+      if (hurt && this.cfg.healerSmitesWhenIdle && !u.enemy && hurt.hp / this.maxHp(hurt) >= u.smiteThreshold) hurt = undefined;   // nobody needs a heal: go smite
       if (hurt && dist(u, hurt) > range) { // keep the lowest-HP ally inside Range
         const a = CombatSim.away(u, hurt);
         return { x: hurt.x + a.dx * range * this.cfg.standoffFactor, y: hurt.y + a.dy * range * this.cfg.standoffFactor };
       }
       // The party healer holds its position with nobody hurt; enemy healers keep the generic approach below.
-      if (hurt || !u.enemy) return undefined;
+      if (hurt || (!u.enemy && !this.cfg.healerSmitesWhenIdle)) return undefined;
     }
     const bound = u.prefMax > 0.0 ? Math.min(u.prefMax, range) : range;
     const dt2 = dist(u, tgt);

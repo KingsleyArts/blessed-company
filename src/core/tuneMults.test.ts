@@ -77,4 +77,25 @@ describe('tuning multipliers', () => {
     const smiteFast = run((c) => c.autoSpeedMult.set('Priest', 2), true);
     CHECK(smiteFast.heals === base.heals, 'smite cast speed x leaves the heal cast alone');
   });
+  it('a Priest with a mildly hurt ally closes on the enemy and smites', () => {
+    const run = (flag: boolean): number => {
+      const cfg = defaultCombatConfig();
+      installShippedCastTimes(cfg);
+      cfg.healerSmitesWhenIdle = flag;
+      const s = new CombatSim(data, 3, cfg);
+      const p = s.addPartyUnit('Priest');
+      const w = s.addPartyUnit('Warrior');
+      Freeze(s, w);
+      Place(s, p, 0, 0); Place(s, w, 40, 0);
+      Dummy(s, 'Grunt', 900, 0);
+      s.startFight();
+      s.mutableUnit(w)!.hp = s.maxHp(s.getUnit(w)!) * 0.95;   // hurt, but above the 85% smite threshold
+      let hits = 0;
+      s.getBus().subscribe('DamageDealt', (e) => { if (e.source === p) hits++; });
+      StepSeconds(s, 12);
+      return hits;
+    };
+    CHECK(run(false) === 0, 'baseline sits idle');
+    CHECK(run(true) > 0, 'with the fix she smites');
+  });
 });
