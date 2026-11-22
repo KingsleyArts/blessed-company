@@ -30,7 +30,7 @@ interface TuneDef { id: string; name: string; step: number; min: number; max: nu
 /** [class, basic attack name] for every hero (heroSheet kHeroOrder); the unit names the sim keys its multipliers by. */
 const kTuneHeroes: [string, string][] = [['Warrior', 'Sword Strike'], ['Mage', 'Arcane Shot'], ['Assassin', 'Twin Blades'], ['Priest', 'Searing Light'],
   ['Barbarian', 'Axe Swing'], ['Summoner', 'Spirit Bolt']];
-const kCastBound = ['Mage', 'Priest'];
+const kCastBound = ['Mage', 'Priest', 'Summoner'];
 /** [AbilityData id, shown name] for every hero ability. Power scales its damage, heal or buff strength (Greater Spirit: its healing). */
 const kTuneAbilities: [string, string][] = [['SpiritHeal', 'Spirit healing (standard spirit)'], ['Taunt', 'Taunt'], ['Cleave', 'Cleave'], ['Fireball', 'Fireball'], ['Execute', 'Execute'],
   ['GroupHeal', 'Prayer of Mending'], ['Rage', 'Rage'], ['Bloodrush', 'Bloodrush'], ['GreaterSpirit', 'Greater Spirit']];

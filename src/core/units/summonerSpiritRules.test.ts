@@ -1,7 +1,8 @@
 // Director Nov 22: the Greater Spirit is only called when someone needs healing; the standard spirit smites like the Priest when every
 // ally is at or above the smite threshold (85%); enemy health and damage grow per floor by separate rates.
 import { describe, it } from 'vitest';
-import { CombatSim } from '../combatSim';
+import { CombatSim, defaultCombatConfig } from '../combatSim';
+import { installShippedCastTimes } from '../castTimes';
 import { DamageTag } from '../eventBus';
 import { StatId } from '../statResolver';
 import { CHECK, Dummy, Freeze, NEAR, Place, StepSeconds, data } from '../combatTestKit';
@@ -77,5 +78,30 @@ describe('floor scaling', () => {
     const f = Math.pow(s.config().floorScaling, 2);
     NEAR(s.maxHp(s.getUnit(e)!), row.BaseStats.HP * f, 1e-6);
     NEAR(s.getUnit(e)!.stats.get(StatId.Damage), row.BaseStats.Damage * f, 1e-6);
+  });
+});
+
+describe('Spirit Bolt casts like Arcane Shot', () => {
+  const shipped = () => { const c = defaultCombatConfig(); installShippedCastTimes(c); return c; };
+  const bolts = (cls: string) => {
+    const s = new CombatSim(data, 7, shipped());
+    const p = s.addPartyUnit(cls);
+    const g = Dummy(s, 'Grunt', 600, 0);
+    Freeze(s, p); Freeze(s, g);
+    Place(s, p, 0, 0);
+    s.mutableUnit(p)!.abilityId = '';
+    s.startFight();
+    let flew = false;
+    const hits: number[] = [];
+    s.getBus().subscribe('DamageDealt', (e) => { if (e.source === p) hits.push(e.amount); });
+    for (let i = 0; i < 20 * 30; ++i) { s.step(); if (s.getProjectiles().some((q) => q.source === p)) flew = true; }
+    return { flew, hits };
+  };
+  it('FliesAsAProjectileAndHitsLighterThanArcaneShot', () => {
+    const su = bolts('Summoner');
+    const mage = bolts('Mage');
+    CHECK(su.flew && su.hits.length > 3, 'summoner bolts fly');
+    CHECK(su.hits[0] < mage.hits[0], `${su.hits[0]} vs ${mage.hits[0]}`);
+    CHECK(su.hits.reduce((a, b) => a + b, 0) < mage.hits.reduce((a, b) => a + b, 0), 'less damage per second');
   });
 });
