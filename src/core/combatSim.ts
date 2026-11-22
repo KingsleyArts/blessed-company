@@ -90,6 +90,10 @@ export interface CombatConfig {
   greaterSpiritRange: number;
   /** DRAFT healing spirits (healer Summoner): heal per spirit pulse = kHealBase x scale (x the owner's Spirit Damage stat as a flat bonus); pulses at the spirit's attack rate. */
   spiritHealScale: number;
+  /** Bloodrush (the Barbarian's second ability): rush speed as a multiple of his move speed, the farthest enemy he will rush (world units), and the longest a rush may take before it gives up. */
+  bloodrushSpeedMult: number;
+  bloodrushRange: number;
+  bloodrushMaxSeconds: number;
   /** A healing spirit that is already this close (world units) to its ideal spot (midway between the Summoner and the ally) does not move. */
   spiritHealIdleRadius: number;
   greaterSpiritHealScale: number;
@@ -161,6 +165,9 @@ export function defaultCombatConfig(): CombatConfig {
     greaterSpiritMoveSpeed: 300.0,
     greaterSpiritRange: 150.0,
     spiritHealScale: 0.5,
+    bloodrushSpeedMult: 2.5,
+    bloodrushRange: 900.0,
+    bloodrushMaxSeconds: 3.0,
     spiritHealIdleRadius: 80.0,
     greaterSpiritHealScale: 1.5,
     readyAtStartAbilities: ['Taunt'],
@@ -266,6 +273,14 @@ export class Unit {
   shieldLeft = 0;
   rageLifesteal = 0;
   rageLifestealLeft = 0;
+  /** Rage's damage-based threat multiplier while rageThreatLeft runs (Rage_3); 1 otherwise. */
+  rageThreatMult = 1;
+  rageThreatLeft = 0;
+  /** Bloodrush in progress: the enemy being rushed, seconds left before it gives up, its damage scale and the ability that started it. */
+  rushTarget: UnitId = kNoUnit;
+  rushLeft = 0;
+  rushValue = 0;
+  rushAbility = '';
   lifesteal = 0;
   buffRefs: BuffRef[] = [];
   fortitude = 0;
@@ -322,6 +337,8 @@ export class CombatSim {
   private waves: WaveSpec[] = [];
   private warnedEffects: string[] = [];
   private projectiles: Projectile[] = [];
+  /** The ability threat multiplier of the damage being dealt right now (AbilityData ThreatMultiplier); 1 outside an ability hit. */
+  private threatNow = 1.0;
   private nextProjectileId = 1;
   private pendingLifesteal: PendingLifesteal[] = [];
   private forcingCast = false;
@@ -556,6 +573,7 @@ export class CombatSim {
       if (!u.alive) continue;
       if (u.weapon) this.syncWeaponSpirit(u);
       this.updateTarget(u);
+      if (u.rushLeft > 0.0) { this.advanceRush(u); continue; } // a Bloodrush replaces movement, attacks and other casts
       if (u.summon && u.spiritHeals) this.moveHealSpirit(u);
       else this.updateMovement(u);
       if (u.castKind !== CastKind.None) {
@@ -615,6 +633,10 @@ export class CombatSim {
     u.dmgReduction = u.dmgReductionLeft = 0.0;
     u.shieldLeft = 0.0;
     u.rageLifesteal = u.rageLifestealLeft = 0.0;
+    u.rageThreatMult = 1.0;
+    u.rageThreatLeft = 0.0;
+    u.rushTarget = kNoUnit;
+    u.rushLeft = 0.0;
     u.buffRefs = [];
     u.retreating = false;
     u.tauntForced = false;
@@ -959,7 +981,9 @@ export class CombatSim {
         share = src.weapon ? 1.0 : this.cfg.summonThreatShare;
         if (!credited) return;
       }
-      const add = ev.amount * credited.stats.get(StatId.Threat) * credited.threatMult * share;
+      // Damage-based threat: Threat stat x class ThreatMultiplier x Rage's multiplier (while active) x the ability's own (Bloodrush), each once.
+      const rage = credited.rageThreatLeft > 0.0 ? credited.rageThreatMult : 1.0;
+      const add = ev.amount * credited.stats.get(StatId.Threat) * credited.threatMult * share * rage * this.threatNow;
       this.addThreat(tgt, credited.id, add);
       credited.threatGenerated += add;
     });
@@ -1134,6 +1158,10 @@ export class CombatSim {
     if (u.dmgReductionLeft > 0.0) {
       u.dmgReductionLeft -= dt;
       if (u.dmgReductionLeft <= 0.0) u.dmgReduction = 0.0;
+    }
+    if (u.rageThreatLeft > 0.0) {
+      u.rageThreatLeft -= dt;
+      if (u.rageThreatLeft <= 0.0) { u.rageThreatLeft = 0.0; u.rageThreatMult = 1.0; }
     }
     if (u.rageLifestealLeft > 0.0) {
       u.rageLifestealLeft -= dt;
@@ -1445,6 +1473,57 @@ export class CombatSim {
     this.applyHeal(owner.id, hurt.id, kHealBase * scale + Math.max(0.0, owner.stats.get(StatId.SpiritDamage)));
   }
 
+  /** Bloodrush's target: the enemy closest to the Barbarian that is attacking a vulnerable ally (a ranged or back-line hero), else his normal
+   *  target, else the closest enemy; only enemies within bloodrushRange. A forced (taunted) target wins. */
+  private bloodrushTarget(u: Unit): Unit | undefined {
+    const foes = this.foes(u).filter((f) => !f.removed && dist(u, f) <= this.cfg.bloodrushRange);
+    if (foes.length === 0) return undefined;
+    const current = this.getUnit(u.target);
+    const normal = current && current.alive && foes.includes(current) ? current : undefined;
+    if (u.tauntForced && normal) return normal;
+    let best: Unit | undefined;
+    let bestD = 0.0;
+    for (const f of foes) {
+      const victim = this.getUnit(f.target);
+      const vulnerable = !!victim && victim.alive && !victim.enemy && !victim.summon && (victim.behavior === Behavior.Backline || victim.behavior === Behavior.Caster);
+      if (!vulnerable) continue;
+      const d = dist(u, f);
+      if (!best || d < bestD) { best = f; bestD = d; }
+    }
+    return best ?? normal ?? this.closestOf(u, foes);
+  }
+  /** One tick of a Bloodrush: close on the target at the rush speed and, in reach, hit it. A target that died or went away is replaced by the
+   *  next best; with none left (or out of time) the rush ends and its cooldown is refunded. */
+  private advanceRush(u: Unit): void {
+    u.rushLeft -= this.cfg.dt;
+    let t = this.getUnit(u.rushTarget);
+    if (!t || !t.alive || t.removed) {
+      t = this.bloodrushTarget(u);
+      u.rushTarget = t ? t.id : kNoUnit;
+    }
+    if (!t || u.rushLeft <= 0.0) { this.endRush(u, true); return; }
+    const reach = u.stats.get(StatId.Range);
+    const d = dist(u, t);
+    if (d <= reach) {
+      const ab = this.data.findAbility(u.rushAbility);
+      this.threatNow = ab?.ThreatMultiplier ?? 1.0;
+      this.dealDamage(u.id, t.id, u.rushValue, DamageTag.Ability);
+      this.threatNow = 1.0;
+      this.endRush(u, false);
+      return;
+    }
+    const step = Math.min(u.moveSpeed * this.cfg.bloodrushSpeedMult * this.cfg.dt, d - reach * 0.9);
+    u.x += ((t.x - u.x) / d) * step;
+    u.y += ((t.y - u.y) / d) * step;
+    this.clampToArena(u);
+  }
+  private endRush(u: Unit, refund: boolean): void {
+    const name = u.rushAbility;
+    u.rushLeft = 0.0;
+    u.rushTarget = kNoUnit;
+    if (refund) this.setTimer(u, name === u.abilityId ? -1 : u.extraAbilities.findIndex((x) => x.id === name), this.cooldownOf(name));
+  }
+
   /** A healing spirit sits midway between its Summoner and the ally it will heal next (the most hurt one); with nobody hurt (or the Summoner
    *  herself hurt) it sits beside the Summoner. Inside spiritHealIdleRadius of that spot it stays put, so switching targets does not make it
    *  shuffle. It never chases enemies. */
@@ -1606,6 +1685,10 @@ export class CombatSim {
       const radius = eff.Duration > 0 ? eff.Duration : this.cfg.areaRadius;
       return foes.filter((f) => dist(u, f) <= radius);
     }
+    if (sel === 'RushTarget') {
+      const t = this.bloodrushTarget(u);
+      return t ? [t] : [];
+    }
     const inRange = foes.filter((f) => dist(u, f) <= range);
     if (inRange.length === 0) return [];
     if (sel === 'WeakestEnemy') {
@@ -1708,12 +1791,35 @@ export class CombatSim {
     const { duration } = r;
     const powerMult = this.abilityPower(eff.AbilityId);
     // Power scales damage, heals and buff strength; a Taunt's "value" is only a flag.
-    const value = eff.Type === 'ApplyModifier' && eff.Stat === 'Taunt' ? r.value : r.value * powerMult;
+    const value = eff.Type === 'ApplyModifier' && (eff.Stat === 'Taunt' || eff.Stat === 'ThreatMult') ? r.value : r.value * powerMult;
     // Collect ids first: a target dying mid-loop must not break iteration.
     const ids = this.effectTargets(u, eff).map((t) => t.id);
     switch (eff.Type) {
-      case 'Damage':
+      case 'Damage': {
+        this.threatNow = this.data.findAbility(eff.AbilityId)?.ThreatMultiplier ?? 1.0;
         for (const id of ids) this.dealDamage(u.id, id, value, DamageTag.Ability);
+        this.threatNow = 1.0;
+        break;
+      }
+      case 'Rush': {
+        // Bloodrush: the rush itself (advanceRush) moves him and lands the hit; this only starts it.
+        if (ids.length === 0) break;
+        u.rushTarget = ids[0];
+        u.rushLeft = this.cfg.bloodrushMaxSeconds;
+        u.rushValue = value;
+        u.rushAbility = eff.AbilityId;
+        this.bus.raise('AttackStarted', { attacker: u.id, target: ids[0] });
+        break;
+      }
+      case 'ThreatBurst':
+        // Rage's opening roar: threat only (no damage, no lifesteal) of Value x the caster's Damage x Threat stat on every enemy in the area.
+        for (const id of ids) {
+          const en = this.getUnit(id);
+          if (!en || !en.enemy) continue;
+          const add = value * u.stats.get(StatId.Damage) * u.stats.get(StatId.Threat);
+          this.addThreat(en, u.id, add);
+          u.threatGenerated += add;
+        }
         break;
       case 'Heal':
         for (const id of ids) this.applyHeal(u.id, id, value * kHealBase);
@@ -1737,6 +1843,9 @@ export class CombatSim {
           if (eff.Stat === 'DamageTakenReduction') {
             t.dmgReduction = value;
             t.dmgReductionLeft = duration;
+          } else if (eff.Stat === 'ThreatMult') {
+            t.rageThreatMult = value;
+            t.rageThreatLeft = duration;
           } else if (eff.Stat === 'Lifesteal') {
             t.rageLifesteal = value;
             t.rageLifestealLeft = duration;

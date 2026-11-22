@@ -51,6 +51,14 @@ export const legacyHeroData: CombatData = (() => {
   barb.BaseStats.HP = Math.fround(160);
   barb.BaseStats.DefensePct = 10;
   barb.BaseThreat = 1.0;
+  barb.ThreatMultiplier = Math.fround(1.2); // as the CSV reader stores it
+  barb.ExtraAbilityIds = [];
+  const rage = d.findAbility('Rage')!;
+  rage.Cooldown = 14;
+  rage.EffectIds = ['Rage_1', 'Rage_2'];
+  d.findEffect('Rage_1')!.Value = 0.5;
+  d.findEffect('Rage_1')!.Duration = 5;
+  d.findEffect('Rage_2')!.Duration = 5;
   const su = d.findClassRow('Summoner')!;
   su.RoleTag = 'Support';
   su.AutoActionId = 'RangedBolt';

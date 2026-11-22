@@ -6,7 +6,7 @@ export type ClassRole = 'Tank' | 'Healer' | 'MeleeDPS' | 'RangedDPS' | 'Support'
 export type EnemyRole = 'Melee' | 'Tank' | 'Ranged' | 'Healer';
 export type TriggerMode = 'OnCooldown' | 'SaveForBossOrElite' | 'PackIsLarge' | 'AllyIsLow';
 export type TargetType = 'Closest' | 'Weakest' | 'Strongest' | 'HealerFirst' | 'ArcherFirst';
-export type EffectType = 'Damage' | 'Heal' | 'AddThreat' | 'ApplyModifier' | 'SpawnSummon';
+export type EffectType = 'Damage' | 'Heal' | 'AddThreat' | 'ApplyModifier' | 'SpawnSummon' | 'Rush' | 'ThreatBurst';
 
 export interface StatBlock { HP: number; Damage: number; AttackPerSec: number; DefensePct: number }
 
@@ -75,6 +75,8 @@ export interface AbilityDataRow {
   Cooldown: number;
   EffectIds: string[];
   AllowedTriggerModes: TriggerMode[];
+  /** Multiplies the damage-based threat of this ability's Damage effects (Bloodrush 3). Absent column = 1. */
+  ThreatMultiplier: number;
 }
 
 export interface GearDataRow {
@@ -162,6 +164,7 @@ export const abilityDataFromRecord = (r: Rec): AbilityDataRow => ({
   Cooldown: flt(r, 'Cooldown', 0),
   EffectIds: list(r, 'EffectIds'),
   AllowedTriggerModes: list<TriggerMode>(r, 'AllowedTriggerModes'),
+  ThreatMultiplier: flt(r, 'ThreatMultiplier', 1),
 });
 
 export const gearDataFromRecord = (r: Rec): GearDataRow => ({
