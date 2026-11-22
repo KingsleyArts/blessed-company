@@ -100,6 +100,8 @@ export interface CombatConfig {
   /** A healing spirit that is already this close (world units) to its ideal spot (midway between the Summoner and the ally) does not move. */
   spiritHealIdleRadius: number;
   greaterSpiritHealScale: number;
+  /** A greater spirit that outlives a won fight waits (duration and recast cooldown paused) for the next one. Off keeps the C++ parity behaviour. */
+  greaterSpiritPersists: boolean;
   readyAtStartAbilities: string[];
   logCapacity: number;
 }
@@ -175,6 +177,7 @@ export function defaultCombatConfig(): CombatConfig {
     bloodrushMaxSeconds: 3.0,
     spiritHealIdleRadius: 80.0,
     greaterSpiritHealScale: 1.5,
+    greaterSpiritPersists: false,
     readyAtStartAbilities: ['Taunt'],
     logCapacity: 4096,
   };
@@ -538,6 +541,16 @@ export class CombatSim {
       for (const s of this.units) if (s.weapon && s.alive && s.owner === o.id) has = true;
       if (!has) this.spawnWeaponSpirit(o);
     }
+    for (const s of this.carriedSpirits) {   // a greater spirit left over from the last fight (resumes with what it had)
+      const o = this.units[s.owner];
+      this.resetTransientState(s);
+      s.id = this.units.length;
+      s.x = o.x + this.cfg.spiritSpawnOffset;
+      s.y = o.y + this.cfg.spiritSpawnOffset;
+      this.units.push(s);
+      this.logSpawn(s);
+    }
+    this.carriedSpirits = [];
   }
 
   /** Casts the unit's ability now (primary, or a named slot), ignoring cooldown and trigger mode (tests, debug tools). */
@@ -674,14 +687,30 @@ export class CombatSim {
     this.note(`${why}: ${this.label(u)} back at ${lround(u.hp)} HP`);
     return true;
   }
+  private carriedSpirits: Unit[] = [];
+  private greaterSpiritTimer(u: Unit): number | undefined {
+    if (u.abilityId === 'GreaterSpirit') return u.abilityTimer;
+    return u.extraAbilities.find((x) => x.id === 'GreaterSpirit')?.timer;
+  }
+  private setGreaterSpiritTimer(u: Unit, v: number): void {
+    if (u.abilityId === 'GreaterSpirit') u.abilityTimer = v;
+    else { const x = u.extraAbilities.find((e) => e.id === 'GreaterSpirit'); if (x) x.timer = v; }
+  }
   /** Clears the last fight's enemies and summons; party HP carries over; party ids are renumbered 0..n-1; the log restarts. */
   prepareNextFight(): void {
     this.projectiles = [];
     const kept: Unit[] = [];
+    const won = this.state === FightState.Won && this.cfg.greaterSpiritPersists;
+    const spirits: Unit[] = [];   // greater spirits that outlive a won fight: their duration (and the Summoner's recast cooldown) just wait for the next one
+    const newId = new Map<UnitId, UnitId>();
     for (const u of this.units) {
+      if (u.summon && won && u.greater && !u.weapon && u.alive) spirits.push(u);
       if (u.enemy || u.summon) continue;
+      newId.set(u.id, kept.length);
       u.id = kept.length;
+      const gs = won && u.alive ? this.greaterSpiritTimer(u) : undefined;
       this.resetTransientState(u);
+      if (gs !== undefined) this.setGreaterSpiritTimer(u, gs);
       const p = this.partySlotPosition(kept.length);
       u.x = p.x;
       u.y = p.y;
@@ -689,6 +718,13 @@ export class CombatSim {
     }
     this.units = kept;
     this.partyCount = this.units.length;
+    this.carriedSpirits = [];
+    for (const s of spirits) {
+      const o = newId.get(s.owner);
+      if (o === undefined || !this.units[o].alive) continue;
+      s.owner = o;
+      this.carriedSpirits.push(s);
+    }
     this.pendingLifesteal = [];
     this.waves = [];
     this.enemySpawnCount = 0;
@@ -1118,7 +1154,7 @@ export class CombatSim {
   private endFight(result: FightState): void {
     this.state = result;
     for (const u of this.units) {
-      if (u.summon && u.alive) { u.alive = false; u.removed = true; }
+      if (u.summon && u.alive && !(result === FightState.Won && this.cfg.greaterSpiritPersists && u.greater && !u.weapon)) { u.alive = false; u.removed = true; }   // a greater spirit waits for the next fight
     }
     this.projectiles = [];
     if (result === FightState.TimedOut) this.note('Fight hit the runaway guard (no one can win): TIMEOUT');

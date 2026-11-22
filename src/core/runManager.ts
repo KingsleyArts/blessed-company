@@ -365,6 +365,7 @@ export class RunManager {
     cfg.enemyStatMult = Math.fround(this.opts.enemyMult);
     if (this.opts.castTimes) installShippedCastTimes(cfg);
     cfg.randomEnemySpawn = true;
+    cfg.greaterSpiritPersists = true;   // a Greater Spirit waits out the gap between fights
     return cfg;
   }
 

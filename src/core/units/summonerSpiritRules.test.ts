@@ -104,4 +104,24 @@ describe('Spirit Bolt casts like Arcane Shot', () => {
     CHECK(su.hits[0] < mage.hits[0], `${su.hits[0]} vs ${mage.hits[0]}`);
     CHECK(su.hits.reduce((a, b) => a + b, 0) < mage.hits.reduce((a, b) => a + b, 0), 'less damage per second');
   });
+  it('GreaterSpiritWaitsForTheNextFightWhenCombatEnds', () => {
+    const { s, su, g } = scene(0.5, true);
+    s.mutableConfig().greaterSpiritPersists = true;
+    s.forceCastAbility(su, 'GreaterSpirit');
+    StepSeconds(s, 2.5);   // the cast lands; the spirit is out
+    const gs = () => s.getUnits().find((u) => u.greater && u.alive);
+    CHECK(!!gs(), 'greater spirit is out');
+    const left = gs()!.lifeLeft;
+    s.mutableUnit(g)!.hp = 0; s.mutableUnit(g)!.alive = false;   // the Grunt falls: the fight is won
+    for (let i = 0; i < 90 && !s.finished(); ++i) s.step();
+    CHECK(s.finished(), 'fight over');
+    CHECK(!!gs(), 'greater spirit survives the end of combat');
+    StepSeconds(s, 5);
+    CHECK(Math.abs(gs()!.lifeLeft - left) < 0.5, `duration paused ${gs()!.lifeLeft} vs ${left}`);
+    s.prepareNextFight();
+    s.startFight();
+    const sp = gs();
+    CHECK(!!sp && sp.owner === su, 'it is back for the next fight');
+    CHECK(sp!.lifeLeft <= left + 1e-6 && sp!.lifeLeft > left - 1, 'duration carried');
+  });
 });
