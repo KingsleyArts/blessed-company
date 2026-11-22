@@ -298,8 +298,6 @@ export class RunManager {
   }
 
   private syncMeta(): void {
-    // Auto does not stop to ask: it gives each piece to the hero the old random roll picked.
-    if (this.auto) for (let p = this.flow.getPendingGear()[0]; p; p = this.flow.getPendingGear()[0]) if (!this.flow.assignGear(0, p.suggested)) break;
     let changed = false;
     const gold = this.flow.consumeGoldDelta();
     if (gold !== 0) {
