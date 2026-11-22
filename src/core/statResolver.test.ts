@@ -210,7 +210,7 @@ describe('class data and the threat model (decision Nov 12)', () => {
     for (const rows of [viaReader, viaRecords]) {
       for (const c of rows) {
         near(c.BaseThreat, c.Name === 'Warrior' ? 1.5 : 1);
-        nearF(c.ThreatMultiplier, c.Name === 'Barbarian' ? 1.2 : 1);
+        nearF(c.ThreatMultiplier, c.Name === 'Barbarian' ? 1.5 : 1);
         expect(c.BaseStats.HP).toBeGreaterThan(0);
         const r = new StatResolver();
         applyClassBase(r, c);

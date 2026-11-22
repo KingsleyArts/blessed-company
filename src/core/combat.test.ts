@@ -602,8 +602,8 @@ describe('combat: review fixes (G2 round 2)', () => {
     NEAR(EffectValue('Taunt_1'), 1, 1e-9);   // director Nov 20: highest threat +1
     NEAR(EffectValue('Taunt_2'), 0.3, 1e-6);
     NEAR(EffectDuration('Taunt_2'), 4, 1e-9);
-    NEAR(EffectValue('Rage_1'), 0.5, 1e-6);
-    NEAR(EffectDuration('Rage_2'), 5, 1e-9);
+    NEAR(EffectValue('Rage_1'), 0.3, 1e-6);   // director Nov 21: +30% attack speed
+    NEAR(EffectDuration('Rage_2'), 8, 1e-9);   // for 8 s
     NEAR(EffectDuration('SummonSpirit_1'), 10, 1e-9);
   });
   it('UnconfiguredEffectDoesNothingAndIsLoggedOnce', () => {

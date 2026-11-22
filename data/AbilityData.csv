@@ -1,11 +1,12 @@
-Name,Cooldown,EffectIds,AllowedTriggerModes,Notes
-Taunt,8,Taunt_3|Taunt_1|Taunt_2,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,Warrior; director Nov 20: Taunt raises the Warrior's threat on every enemy to that enemy's current highest threat +1 (Taunt_1) AND forces every enemy to attack the Warrior for Taunt_3 Duration seconds so the enemies stay on the Warrior after the forced attack ends; 8 s cooldown and the first cast is ready at fight start (CombatConfig readyAtStartAbilities) once an enemy is in the Warrior's range; trigger-mode list is PLACEHOLDER
-GroupHeal,10,GroupHeal_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,Priest; trigger-mode list is PLACEHOLDER
-Execute,8,Execute_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,Assassin; trigger-mode list is PLACEHOLDER
-Rage,14,Rage_1|Rage_2,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,Barbarian; trigger-mode list is PLACEHOLDER
-SummonSpirit,15,SummonSpirit_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,UNUSED since the Nov 12 Summoner weapon spirit decision (no class has it; the standard spirit is always present and is not cast); row kept; trigger-mode list is PLACEHOLDER
-Fireball,9,Fireball_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,Mage; trigger-mode list is PLACEHOLDER
-Cleave,3,Cleave_1|Cleave_2,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,Warrior second ability slot (ClassData ExtraAbilityIds); area damage around the Warrior to build threat on the whole pack; PLACEHOLDER: 3 s cooldown (tuned so the first cast lands as the pack arrives); trigger-mode list is PLACEHOLDER
-GreaterSpirit,30,GreaterSpirit_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,Summoner's only ability (ClassData AbilityId since the Nov 12 weapon spirit decision; the Summoner's weapon is the always-present standard spirit); DRAFT: greater spirit cooldown 30 s; trigger-mode list is PLACEHOLDER
-BruteTaunt,12,BruteTaunt_1,OnCooldown,Brute (EnemyData AbilityId); PLACEHOLDER draft: 12 s cooldown
-ShamanHeal,0,ShamanHeal_1,OnCooldown,Shaman auto heal (EnemyData AutoActionId); never cast as a cooldown ability; the effect row holds the heal amount
+Name,Cooldown,EffectIds,AllowedTriggerModes,ThreatMultiplier,Notes
+Taunt,8,Taunt_3|Taunt_1|Taunt_2,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,1,Warrior; director Nov 20: Taunt raises the Warrior's threat on every enemy to that enemy's current highest threat +1 (Taunt_1) AND forces every enemy to attack the Warrior for Taunt_3 Duration seconds so the enemies stay on the Warrior after the forced attack ends; 8 s cooldown and the first cast is ready at fight start (CombatConfig readyAtStartAbilities) once an enemy is in the Warrior's range; trigger-mode list is PLACEHOLDER
+GroupHeal,10,GroupHeal_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,1,Priest; trigger-mode list is PLACEHOLDER
+Execute,8,Execute_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,1,Assassin; trigger-mode list is PLACEHOLDER
+Rage,16,Rage_1|Rage_2|Rage_3|Rage_4,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,1,Barbarian; trigger-mode list is PLACEHOLDER
+SummonSpirit,15,SummonSpirit_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,1,UNUSED since the Nov 12 Summoner weapon spirit decision (no class has it; the standard spirit is always present and is not cast); row kept; trigger-mode list is PLACEHOLDER
+Fireball,9,Fireball_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,1,Mage; trigger-mode list is PLACEHOLDER
+Cleave,3,Cleave_1|Cleave_2,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,1,Warrior second ability slot (ClassData ExtraAbilityIds); area damage around the Warrior to build threat on the whole pack; PLACEHOLDER: 3 s cooldown (tuned so the first cast lands as the pack arrives); trigger-mode list is PLACEHOLDER
+GreaterSpirit,30,GreaterSpirit_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,1,Summoner's only ability (ClassData AbilityId since the Nov 12 weapon spirit decision; the Summoner's weapon is the always-present standard spirit); DRAFT: greater spirit cooldown 30 s; trigger-mode list is PLACEHOLDER
+Bloodrush,8,Bloodrush_1,OnCooldown|SaveForBossOrElite|PackIsLarge|AllyIsLow,3,Barbarian second ability (ClassData ExtraAbilityIds); director Nov 21: the Barbarian rushes the enemy attacking a vulnerable ally (else his normal target) and hits for Bloodrush_1 Value x his Damage with 3x damage-based threat (this column); 8 s cooldown; trigger-mode list is PLACEHOLDER
+BruteTaunt,12,BruteTaunt_1,OnCooldown,1,Brute (EnemyData AbilityId); PLACEHOLDER draft: 12 s cooldown
+ShamanHeal,0,ShamanHeal_1,OnCooldown,1,Shaman auto heal (EnemyData AutoActionId); never cast as a cooldown ability; the effect row holds the heal amount

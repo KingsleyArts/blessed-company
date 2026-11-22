@@ -28,11 +28,11 @@ export interface HudOptions { testing: boolean }
 interface TuneDef { id: string; name: string; step: number; min: number; max: number; tab: number }
 /** [class, basic attack name] for every hero (heroSheet kHeroOrder); the unit names the sim keys its multipliers by. */
 const kTuneHeroes: [string, string][] = [['Warrior', 'Sword Strike'], ['Mage', 'Arcane Shot'], ['Assassin', 'Twin Blades'], ['Priest', 'Searing Light'],
-  ['Barbarian', 'Heavy Swing'], ['Summoner', 'Spirit Bolt']];
+  ['Barbarian', 'Axe Swing'], ['Summoner', 'Spirit Bolt']];
 const kCastBound = ['Mage', 'Priest'];
 /** [AbilityData id, shown name] for every hero ability. Power scales its damage, heal or buff strength (Greater Spirit: its healing). */
 const kTuneAbilities: [string, string][] = [['SpiritHeal', 'Spirit healing (standard spirit)'], ['Taunt', 'Taunt'], ['Cleave', 'Cleave'], ['Fireball', 'Fireball'], ['Execute', 'Execute'],
-  ['GroupHeal', 'Prayer of Mending'], ['Rage', 'Rage'], ['GreaterSpirit', 'Greater Spirit']];
+  ['GroupHeal', 'Prayer of Mending'], ['Rage', 'Rage'], ['Bloodrush', 'Bloodrush'], ['GreaterSpirit', 'Greater Spirit']];
 const kTune: TuneDef[] = [
   { id: 'enemyMult', name: 'Enemy health and damage x', step: 0.1, min: 0.3, max: 4, tab: 1 },
   { id: 'castTime', name: 'Cast times and windups x (0 = instant)', step: 0.25, min: 0, max: 3, tab: 0 },

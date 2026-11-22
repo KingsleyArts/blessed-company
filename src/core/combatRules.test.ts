@@ -48,7 +48,7 @@ describe('combat: shared-core pass', () => {
     Place(s, b, -1000, 0);
     Place(s, g, 1000, 0);
     let casts = 0;
-    s.getBus().subscribe('AbilityCast', (a) => { if (a.caster === b) ++casts; });
+    s.getBus().subscribe('AbilityCast', (a) => { if (a.caster === b && a.abilityId === 'Rage') ++casts; });   // Bloodrush has its own, longer reach
     s.startFight();
     StepTicks(s, Math.trunc((data.findAbility('Rage')!.Cooldown + 3) / s.config().dt));
     CHECK(casts === 0);

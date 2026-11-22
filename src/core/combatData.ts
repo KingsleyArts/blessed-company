@@ -44,7 +44,7 @@ export const parseClassRole = (s: string): ClassRole => oneOf(s, ['Healer', 'Mel
 export const parseEnemyRole = (s: string): EnemyRole => oneOf(s, ['Tank', 'Ranged', 'Healer'] as const, 'Melee');
 export const parseTriggerMode = (s: string): TriggerMode => oneOf(s, ['SaveForBossOrElite', 'PackIsLarge', 'AllyIsLow'] as const, 'OnCooldown');
 export const parseTargetType = (s: string): TargetType => oneOf(s, ['Weakest', 'Strongest', 'HealerFirst', 'ArcherFirst'] as const, 'Closest');
-export const parseEffectType = (s: string): EffectType => oneOf(s, ['Heal', 'AddThreat', 'ApplyModifier', 'SpawnSummon'] as const, 'Damage');
+export const parseEffectType = (s: string): EffectType => oneOf(s, ['Heal', 'AddThreat', 'ApplyModifier', 'SpawnSummon', 'Rush', 'ThreatBurst'] as const, 'Damage');
 export const parseBool = (s: string): boolean => s === 'true' || s === 'True' || s === '1';
 
 /** ClassData.csv with ALL columns: numeric ones through the class reader, string/enum ones from the generic table. */
@@ -112,6 +112,7 @@ export function parseAbilityDataCsv(text: string): AbilityDataRow[] {
       Cooldown: num(t, cells, 'Cooldown', 0, ok),
       EffectIds: splitList(str(t, cells, 'EffectIds')),
       AllowedTriggerModes: splitList(str(t, cells, 'AllowedTriggerModes')).map(parseTriggerMode),
+      ThreatMultiplier: num(t, cells, 'ThreatMultiplier', 1, ok),
     };
     if (ok.v && a.Name !== '') out.push(a);
   }
