@@ -58,19 +58,33 @@ describe('healer Summoner', () => {
     CHECK(heals === 0, 'no heals');
   });
 
-  it('GreaterSpiritIsAStationaryBiggerHealer', () => {
+  it('GreaterSpiritIsABiggerHealer', () => {
     const { s, su, w } = scene(0.2);
     s.mutableUnit(w)!.hp = 1; // keep her hurt for a long time
     s.mutableUnit(su)!.abilityId = 'GreaterSpirit';
     CHECK(s.forceCastAbility(su), 'cast');
     const big = s.getUnits().find((u) => u.greater && u.alive)!;
-    CHECK(big.spiritHeals && big.moveSpeed === 0, 'healing and stationary');
+    CHECK(big.spiritHeals, 'healing');
     const heals: number[] = [];
     s.getBus().subscribe('HealApplied', (e) => heals.push(e.effectiveAmount));
     StepSeconds(s, 5);
     CHECK(Math.max(...heals) >= kHealBase * s.config().greaterSpiritHealScale - 1e-6, 'a big pulse');
-    const o = s.getUnit(su)!;
-    CHECK(Math.hypot(big.x - o.x, big.y - o.y) < 250, 'stays beside the Summoner (unit separation may nudge it)');
+    CHECK(Math.max(...heals) > 0, 'healed');
+  });
+
+  it('SpiritsWalkToTheAllyTheyHealAndBackWhenNobodyIsHurt', () => {
+    const { s, su, w } = scene(0.3);
+    Place(s, w, 700, -300); // far from the Summoner at the origin
+    s.mutableUnit(w)!.hp = 5;
+    const spirit = s.getUnits().find((u) => u.weapon && u.owner === su)!;
+    const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    const start = dist(spirit, s.getUnit(w)!);
+    StepSeconds(s, 2);
+    CHECK(dist(spirit, s.getUnit(w)!) < start * 0.5, 'moved toward the hurt ally');
+    CHECK(dist(spirit, s.getUnit(su)!) > 300, 'not glued to the Summoner');
+    s.mutableUnit(w)!.hp = s.maxHp(s.getUnit(w)!); // everyone healthy: it drifts home
+    StepSeconds(s, 4);
+    CHECK(dist(spirit, s.getUnit(su)!) < 250, 'back beside the Summoner');
   });
 
   it('TheTuningMultipliersScaleSpiritHealing', () => {

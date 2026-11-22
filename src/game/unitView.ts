@@ -230,7 +230,12 @@ export class UnitView {
     if (foot.depth <= 0) return;
     const side = this.room.project(p.x + 50 * kBodyXY, p.y, 0);
     const pxPerUu = Math.abs(side.x - foot.x) / (50 * kBodyXY);
-    const depth = 100 + (p.y + 5000) / 100;
+    let depth = 100 + (p.y + 5000) / 100;
+    if (u.summon && !u.enemy) {
+      // A spirit is never drawn over its Summoner, even when it stands nearer the camera, so she stays in view.
+      const owner = sim.getUnit(u.owner);
+      if (owner) depth = Math.min(depth, 100 + (this.worldPos(owner).y + 5000) / 100 - 0.02);
+    }
     v.gfx.setDepth(depth);
     const g = v.gfx;
     g.clear();
