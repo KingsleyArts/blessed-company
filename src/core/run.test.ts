@@ -115,17 +115,18 @@ describe('run', () => {
   // ---------------------------------------------------------------------------------------- roster (party picker)
   it('roster_defaults_and_ownership', () => {
     const m = makeMeta();
-    CHECK(eqArr(ownedHeroes(m), ['Warrior', 'Mage', 'Assassin']));
+    // All six heroes are owned (director, Nov 21); the default party stays Warrior + Mage until the Priestess is granted.
+    CHECK(eqArr(ownedHeroes(m), ['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner']));
     CHECK(eqArr(activeParty(m), ['Warrior', 'Mage']));
-    CHECK(!rosterOwns(m, 'Priest'));
+    CHECK(rosterOwns(m, 'Priest') && !rosterOwns(m, 'Nobody'));
     m.priestUnlocked = true;
-    CHECK(rosterOwns(m, 'Priest') && ownedHeroes(m).length === 4);
+    CHECK(rosterOwns(m, 'Priest') && ownedHeroes(m).length === 6);
     CHECK(eqArr(activeParty(m), ['Warrior', 'Mage', 'Priest']));
   });
 
   it('roster_toggle_rules', () => {
     const m = makeMeta();
-    CHECK(toggleActiveHero(m, 'Priest') === RosterResult.NotOwned);
+    CHECK(toggleActiveHero(m, 'Nobody') === RosterResult.NotOwned);
     CHECK(toggleActiveHero(m, 'Assassin') === RosterResult.Added);
     CHECK(eqArr(activeParty(m), ['Warrior', 'Mage', 'Assassin']));
     m.priestUnlocked = true;
@@ -142,8 +143,8 @@ describe('run', () => {
   it('roster_sanitises_a_bad_saved_party', () => {
     const m = makeMeta();
     m.activeParty = ['Priest', 'Mage', 'Mage', 'Barbarian', 'Warrior', 'Assassin'];
-    CHECK(eqArr(activeParty(m), ['Mage', 'Warrior', 'Assassin']));
-    m.activeParty = ['Priest'];
+    CHECK(eqArr(activeParty(m), ['Priest', 'Mage', 'Barbarian']));
+    m.activeParty = ['Nobody'];
     CHECK(eqArr(activeParty(m), ['Warrior', 'Mage']));
   });
 

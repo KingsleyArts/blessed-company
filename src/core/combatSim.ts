@@ -88,6 +88,9 @@ export interface CombatConfig {
   greaterSpiritAttackPerSec: number;
   greaterSpiritMoveSpeed: number;
   greaterSpiritRange: number;
+  /** DRAFT healing spirits (healer Summoner): heal per spirit pulse = kHealBase x scale (x the owner's Spirit Damage stat as a flat bonus); pulses at the spirit's attack rate. */
+  spiritHealScale: number;
+  greaterSpiritHealScale: number;
   readyAtStartAbilities: string[];
   logCapacity: number;
 }
@@ -155,6 +158,8 @@ export function defaultCombatConfig(): CombatConfig {
     greaterSpiritAttackPerSec: 1.0,
     greaterSpiritMoveSpeed: 300.0,
     greaterSpiritRange: 150.0,
+    spiritHealScale: 0.5,
+    greaterSpiritHealScale: 1.5,
     readyAtStartAbilities: ['Taunt'],
     logCapacity: 4096,
   };
@@ -204,6 +209,9 @@ export class Unit {
   greater = false;
   weapon = false;
   hasWeaponSpirit = false;
+  /** Healer-Summoner (ClassData AutoActionId SpiritBolt, director Nov 21): the Summoner fires its own bolt and its spirits heal allies
+   *  instead of attacking. Set on the Summoner and copied to its spirits. */
+  spiritHeals = false;
   tauntLeft = 0;
   tauntForced = false;
   tauntEnemiesLeft = 0;
@@ -379,6 +387,7 @@ export class CombatSim {
     this.initAbilityTimers(u);
     u.hasWeaponSpirit = this.abilitySummons(u.abilityId);
     for (const x of u.extraAbilities) if (this.abilitySummons(x.id)) u.hasWeaponSpirit = true;
+    u.spiritHeals = u.hasWeaponSpirit && row.AutoActionId === 'SpiritBolt';
     if (row.SmiteThreshold > 0) u.smiteThreshold = Math.round(row.SmiteThreshold * 1e6) / 1e6; // float 0.85f -> 0.85
     else u.smiteThreshold = this.cfg.smiteThreshold;
     u.allowedTargets = [...row.AllowedTargetTypes];
@@ -540,7 +549,7 @@ export class CombatSim {
     for (let i = 0; i < count; i++) {
       const u = this.units[i];
       if (!u.alive) continue;
-      if (u.weapon) this.syncWeaponSpirit(u);
+      if (u.weapon || (u.greater && u.spiritHeals)) this.syncWeaponSpirit(u);
       this.updateTarget(u);
       this.updateMovement(u);
       if (u.castKind !== CastKind.None) {
@@ -1378,14 +1387,15 @@ export class CombatSim {
 
   // ------------------------------------------------------------------ auto attack
   private tryAuto(u: Unit): void {
-    if (u.hasWeaponSpirit) return; // the Summoner's weapon is its spirit
+    if (u.summon && u.spiritHeals) { this.spiritHeal(u); return; } // a healing spirit pulses a heal instead of attacking
+    if (u.hasWeaponSpirit && !u.spiritHeals) return; // the (damage) Summoner's weapon is its spirit
     const interval = 1.0 / this.speedOf(u);
     const bound = this.autoCastBase(u) > 0.0; // cast-bound casters have no swing timer: the cast time is the limit
     if (!bound && u.attackTimer < interval - 1e-9) return;
     const range = u.stats.get(StatId.Range);
     let tags: number = DamageTag.Auto;
     if (u.summon) tags |= DamageTag.Summon;
-    if (u.healer) {
+    if (u.healer && !u.spiritHeals) {
       // Smite rule: heal the lowest-HP ally while any is below the threshold, else smite.
       const hurt = this.lowestHpAlly(u, true);
       if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold) {
@@ -1413,6 +1423,20 @@ export class CombatSim {
     u.castScale = (bound ? this.autoCastPower(u) : 1.0) * this.autoPower(u);
     if (w > 0.0) { this.startCast(u, CastKind.Auto, w, tgt.id, tags, 0.0); return; }
     this.launchAuto(u, tgt.id, u.castScale, tags);
+  }
+
+  /** A healing spirit's pulse: heals the most hurt ally for its owner (credit, Heal Power and threat go to the Summoner). Nobody hurt: the
+   *  pulse stays ready. */
+  private spiritHeal(u: Unit): void {
+    const owner = this.getUnit(u.owner);
+    if (!owner || !owner.alive) return;
+    const interval = 1.0 / u.stats.get(StatId.AttackSpeed);
+    if (u.attackTimer < interval - 1e-9) return;
+    const hurt = this.lowestHpAlly(owner, true);
+    if (!hurt || dist(owner, hurt) > owner.stats.get(StatId.Range)) return;
+    u.attackTimer -= interval;
+    const scale = (u.greater ? this.cfg.greaterSpiritHealScale * this.abilityPower('GreaterSpirit') : this.cfg.spiritHealScale * this.abilityPower('SpiritHeal'));
+    this.applyHeal(owner.id, hurt.id, kHealBase * scale + Math.max(0.0, owner.stats.get(StatId.SpiritDamage)));
   }
 
   /** Testing-menu multipliers (see CombatConfig). */
@@ -1734,11 +1758,12 @@ export class CombatSim {
     s.greater = greater;
     s.owner = owner.id;
     s.behavior = Behavior.Melee;
+    s.spiritHeals = owner.spiritHeals;
     s.stats.setBase(StatId.Health, greater ? cfg.greaterSpiritHp : cfg.spiritHp);
-    s.stats.setBase(StatId.Damage, ((greater ? cfg.greaterSpiritDamage : cfg.spiritDamage) + Math.max(0.0, owner.stats.get(StatId.SpiritDamage))) * (greater ? this.abilityPower('GreaterSpirit') : 1.0));
+    s.stats.setBase(StatId.Damage, ((greater ? cfg.greaterSpiritDamage : cfg.spiritDamage) + Math.max(0.0, owner.stats.get(StatId.SpiritDamage))) * (greater && !owner.spiritHeals ? this.abilityPower('GreaterSpirit') : 1.0));
     s.stats.setBase(StatId.AttackSpeed, greater ? cfg.greaterSpiritAttackPerSec : cfg.spiritAttackPerSec);
     s.stats.setBase(StatId.Range, greater ? cfg.greaterSpiritRange : cfg.spiritRange);
-    s.moveSpeed = greater ? cfg.greaterSpiritMoveSpeed : cfg.spiritMoveSpeed;
+    s.moveSpeed = owner.spiritHeals ? 0.0 : greater ? cfg.greaterSpiritMoveSpeed : cfg.spiritMoveSpeed; // healing spirits stay beside the Summoner
     s.lifeLeft = dataDuration + (greater ? Math.max(0.0, owner.stats.get(StatId.SpiritDuration)) : 0.0);
     if (s.lifeLeft <= 0.0) { this.note('WARNING: Spirit has no duration in data: not summoned'); return; }
     this.finishUnit(s);
@@ -1759,6 +1784,12 @@ export class CombatSim {
   private syncWeaponSpirit(s: Unit): void {
     const o = this.getUnit(s.owner);
     if (!o || !o.alive) return;
+    if (s.greater) { // a healing greater spirit only keeps its place beside the Summoner
+      s.x = o.x + this.cfg.spiritSpawnOffset;
+      s.y = o.y + this.cfg.spiritSpawnOffset;
+      this.clampToArena(s);
+      return;
+    }
     s.stats.setBase(StatId.Damage, (o.stats.get(StatId.Damage) + Math.max(0.0, o.stats.get(StatId.SpiritDamage))) * this.autoPower(o));
     s.stats.setBase(StatId.AttackSpeed, this.speedOf(o));
     s.stats.setBase(StatId.Range, o.stats.get(StatId.Range));
@@ -1774,6 +1805,7 @@ export class CombatSim {
     s.name = 'Spirit';
     s.summon = true;
     s.weapon = true;
+    s.spiritHeals = owner.spiritHeals;
     s.owner = owner.id;
     s.behavior = Behavior.Melee;
     s.moveSpeed = 0.0;

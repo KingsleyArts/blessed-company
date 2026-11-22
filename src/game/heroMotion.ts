@@ -89,8 +89,8 @@ export function heroPose(s: HeroState, fx: HeroFx, m = kHeroMotion): HeroPose {
 export const kEnemySpriteNames = ['Archer', 'Brute', 'Shaman'] as const;
 export const enemyTextureKey = (name: string): string => `enemy_${name}`;
 
-/** The heroes that have a combat sprite (the ones a player can have today; Barbarian and Summoner keep the sphere). */
-export const kHeroSpriteClasses = ['Warrior', 'Mage', 'Assassin', 'Priest'] as const;
+/** The heroes that have a combat sprite (all six since the Barbarian and Summoner came online, Nov 21). */
+export const kHeroSpriteClasses = ['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner'] as const;
 export const heroTextureKey = (cls: string): string => `hero_${cls}`;
 /** Which way the chibi art (heroes and the still enemies) faces as drawn. It faces right (director, Nov 20: with `true` the heroes attacked with their backs turned),
  *  so it is mirrored only when the hero looks left. */

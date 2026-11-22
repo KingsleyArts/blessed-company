@@ -168,7 +168,7 @@ const kAutoFirstStepDelay = 0.25;   // seconds before the first Auto step after 
 const kMaxStepsPerFrame = 128;
 const kTempleClasses = ['Warrior', 'Mage'];   // the classes the Temple sells gear for (as in Unreal)
 const kTempleLuck = ['EssencePerKill', 'EssencePerRoom', 'GoldPerRoom'];
-const kHeroes = ['Warrior', 'Mage', 'Assassin', 'Priest'];
+const kHeroes = kHeroOrder;
 
 interface Timer { at: number; fn: () => void }
 
@@ -1107,7 +1107,7 @@ export class RunManager {
       const owned = rosterOwns(this.meta, cls);
       out.push({
         className: cls, label: heroLabel(cls), role: roleLabel(row.RoleTag), owned, active: owned && rosterIsActive(this.meta, cls),
-        note: owned ? '' : cls === rosterPriestClass() ? 'Rescue her on floor 2' : roster ? 'Not owned yet' : 'Cannot be recruited yet',
+        note: owned ? '' : cls === rosterPriestClass() ? 'Rescue her on floor 2' : roster ? 'Not owned yet' : 'Cannot be recruited yet', // every hero is owned since Nov 21
         stats: heroStatLines(u.stats, (stat) => side.isUnlocked(stat)),
         skills: heroSkills(row),
       });
@@ -1138,7 +1138,14 @@ export class RunManager {
     this.ensureMetaLoaded();
     const owned = kHeroOrder.filter((h) => rosterOwns(this.meta, h));
     const role = (h: string): number => rolePriority(this.data.findClassRow(h)?.RoleTag ?? '');
-    return [...owned].sort((a, b) => role(a) - role(b) || kHeroOrder.indexOf(a as never) - kHeroOrder.indexOf(b as never)).slice(0, kActiveSlots);
+    const sorted = [...owned].sort((a, b) => role(a) - role(b) || kHeroOrder.indexOf(a as never) - kHeroOrder.indexOf(b as never));
+    // One hero per role first (a tank, a healer, a ranged damage dealer), then whoever is left in the same order: with six heroes owned a
+    // second tank or healer comes after the first of every role.
+    const out: string[] = [];
+    const roles = new Set<number>();
+    for (const h of sorted) if (!roles.has(role(h))) { roles.add(role(h)); out.push(h); }
+    for (const h of sorted) if (!out.includes(h)) out.push(h);
+    return out.slice(0, kActiveSlots);
   }
 
   /** Testing builds: wipes all saved progress without starting a run (the Temple stays up). */

@@ -41,11 +41,27 @@ export function cloneData(src: CombatData = data): CombatData {
   return d;
 }
 
+/** The data with the Nov 12 Barbarian (melee damage) and Summoner (support whose weapon spirit attacks), as the C++ build had them. The
+ *  director's Nov 21 change made the Barbarian a tank and the Summoner a healer (data/ClassData.csv); the suites that port the C++ unit
+ *  tests or reproduce its goldens use this so they keep checking the engine against the C++ build. */
+export const legacyHeroData: CombatData = (() => {
+  const d = cloneData();
+  const barb = d.findClassRow('Barbarian')!;
+  barb.RoleTag = 'MeleeDPS';
+  barb.BaseStats.HP = Math.fround(160);
+  barb.BaseStats.DefensePct = 10;
+  barb.BaseThreat = 1.0;
+  const su = d.findClassRow('Summoner')!;
+  su.RoleTag = 'Support';
+  su.AutoActionId = 'RangedBolt';
+  return d;
+})();
+
 /** The data with the Unreal-era Taunt (forced attack only; Taunt_1 unused at +100), as the C++ build and its soak numbers had it. The
  *  director's Nov 20 Taunt (threat to highest +1, then the forced attack) is a data change; the tests that reproduce exact Unreal
  *  numbers or distributions use this so they keep checking the engine against the C++ build. */
 export const unrealTauntData: CombatData = (() => {
-  const d = cloneData();
+  const d = cloneData(legacyHeroData);
   d.findAbility('Taunt')!.EffectIds = ['Taunt_3', 'Taunt_2'];
   d.findEffect('Taunt_1')!.Value = 100;
   return d;

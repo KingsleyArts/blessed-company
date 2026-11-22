@@ -5,7 +5,10 @@ import { Behavior, CombatSim, FightState, runFightHeadless, type Unit } from '..
 import { CombatData } from '../combatData';
 import { DamageTag, kNoUnit, type UnitId } from '../eventBus';
 import { ModKind, ModSource, StatId } from '../statResolver';
-import { CHECK, Cls, Enemy, Freeze, NEAR, Place, StepSeconds, StepTicks, StubRow, data, llround } from '../combatTestKit';
+import { CHECK, Enemy, Freeze, NEAR, Place, StepSeconds, StepTicks, StubRow, legacyHeroData as data, llround } from '../combatTestKit';
+
+// The Nov 12 support Summoner whose weapon spirit attacks (the shipped one is a healer since Nov 21; see summonerHealer.test.ts).
+const Cls = (n: string) => data.findClassRow(n)!;
 
 const EffectDuration = (n: string) => data.findEffect(n)?.Duration ?? 0;
 function copyData(src: CombatData): CombatData {

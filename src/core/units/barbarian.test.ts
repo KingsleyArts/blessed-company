@@ -8,9 +8,9 @@ import { threatWeight } from '../classData';
 import type { TargetType } from '../dataTypes';
 import { DamageTag, kNoUnit, type UnitId } from '../eventBus';
 import { ModKind, ModSource, StatId } from '../statResolver';
-import { CHECK, NEAR, StubRow, Ticks, dist, pinnedData } from '../combatTestKit';
+import { CHECK, NEAR, StubRow, Ticks, dist, legacyHeroData } from '../combatTestKit';
 
-const data = pinnedData;
+const data = legacyHeroData; // the Nov 12 melee-damage Barbarian this suite ports (the shipped one is a tank since Nov 21)
 const statDef = parseCsvTable(StatDefCsv);
 const sd = (row: string[], name: string): string => {
   const i = statDef.col.get(name);

@@ -28,10 +28,10 @@ export interface HudOptions { testing: boolean }
 interface TuneDef { id: string; name: string; step: number; min: number; max: number; tab: number }
 /** [class, basic attack name] for every hero (heroSheet kHeroOrder); the unit names the sim keys its multipliers by. */
 const kTuneHeroes: [string, string][] = [['Warrior', 'Sword Strike'], ['Mage', 'Arcane Shot'], ['Assassin', 'Twin Blades'], ['Priest', 'Searing Light'],
-  ['Barbarian', 'Heavy Swing'], ['Summoner', 'Spirit']];
+  ['Barbarian', 'Heavy Swing'], ['Summoner', 'Spirit Bolt']];
 const kCastBound = ['Mage', 'Priest'];
-/** [AbilityData id, shown name] for every hero ability. Power scales its damage, heal or buff strength (Greater Spirit: the spirit's damage). */
-const kTuneAbilities: [string, string][] = [['Taunt', 'Taunt'], ['Cleave', 'Cleave'], ['Fireball', 'Fireball'], ['Execute', 'Execute'],
+/** [AbilityData id, shown name] for every hero ability. Power scales its damage, heal or buff strength (Greater Spirit: its healing). */
+const kTuneAbilities: [string, string][] = [['SpiritHeal', 'Spirit healing (standard spirit)'], ['Taunt', 'Taunt'], ['Cleave', 'Cleave'], ['Fireball', 'Fireball'], ['Execute', 'Execute'],
   ['GroupHeal', 'Prayer of Mending'], ['Rage', 'Rage'], ['GreaterSpirit', 'Greater Spirit']];
 const kTune: TuneDef[] = [
   { id: 'enemyMult', name: 'Enemy health and damage x', step: 0.1, min: 0.3, max: 4, tab: 1 },
@@ -44,7 +44,7 @@ const kTune: TuneDef[] = [
   { id: 'hurtCooldown', name: 'Hurt sprite cooldown (s between flinches)', step: 0.25, min: 0, max: 5, tab: 1 },
   { id: 'enemySprites', name: 'All enemy sprites x', step: 0.05, min: 0.5, max: 2, tab: 2 },
   { id: 'partySprites', name: 'All party sprites x', step: 0.05, min: 0.5, max: 2, tab: 2 },
-  ...['Warrior', 'Mage', 'Assassin', 'Priest', 'Grunt', 'Archer', 'Brute', 'Shaman'].map((n) => ({
+  ...['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner', 'Grunt', 'Archer', 'Brute', 'Shaman'].map((n) => ({
     id: `size:${n}`, name: `${n === 'Priest' ? 'Priestess' : n} size x`, step: 0.05, min: 0.3, max: 3, tab: 2,
   })),
   { id: 'hazeDepth', name: 'Room haze depth (share of view)', step: 0.02, min: 0, max: 0.5, tab: 2 },
@@ -62,7 +62,7 @@ const kTune: TuneDef[] = [
   ]),
   ...kTuneAbilities.flatMap(([id, name]) => [
     { id: `abPower:${id}`, name: `${name} power x`, step: 0.05, min: 0.1, max: 4, tab: 5 },
-    { id: `abCooldown:${id}`, name: `${name} cooldown x`, step: 0.1, min: 0.1, max: 4, tab: 5 },
+    ...(id === 'SpiritHeal' ? [] : [{ id: `abCooldown:${id}`, name: `${name} cooldown x`, step: 0.1, min: 0.1, max: 4, tab: 5 }]), // the standard spirit has no cooldown
   ]),
 ];
 const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites and room', 'Readability', 'Attacks and speed', 'Abilities'];

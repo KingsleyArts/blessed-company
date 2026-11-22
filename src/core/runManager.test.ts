@@ -136,7 +136,7 @@ describe('RunManager (live)', () => {
     const dmg = t.items.find((i) => i.id === 'Level:Damage')!;
     expect(dmg.level).toBe(1);
     expect(t.essence).toBe(rm.getMeta().gold);
-    expect(t.roster.map((r) => `${r.label}:${r.owned ? 1 : 0}${r.active ? 1 : 0}`)).toEqual(['Warrior:11', 'Mage:11', 'Assassin:10', 'Priestess:00']);
+    expect(t.roster.map((r) => `${r.label}:${r.owned ? 1 : 0}${r.active ? 1 : 0}`)).toEqual(['Warrior:11', 'Mage:11', 'Assassin:10', 'Priestess:10', 'Barbarian:10', 'Summoner:10']);
     expect(reloaded.templeBuy('Party:Assassin')).toBe(true);
     expect(new RunManager(data, store).getTempleSnapshot().roster.find((r) => r.className === 'Assassin')!.active).toBe(true);
     // The party picker decides the next run's party.

@@ -19,9 +19,9 @@ describe('hero sheets', () => {
     ]);
     expect(w.role).toBe('Tank');
     expect(w.skills.map((s) => s.name)).toEqual(['Sword Strike', 'Taunt']);   // Cleave exists in AbilityData but no class lists it (ClassData ExtraAbilityIds is empty)
-    expect(heroes.filter((h) => h.owned).map((h) => h.className)).toEqual(['Warrior', 'Mage', 'Assassin']);
-    expect(heroes.find((h) => h.className === 'Priest')!.note).toBe('Rescue her on floor 2');
-    expect(heroes.find((h) => h.className === 'Barbarian')!.owned).toBe(false);
+    expect(heroes.filter((h) => h.owned).map((h) => h.className)).toEqual(['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner']);   // all six since Nov 21
+    expect(heroes.find((h) => h.className === 'Barbarian')!.role).toBe('Tank');
+    expect(heroes.find((h) => h.className === 'Summoner')!.role).toBe('Healer');
   });
 
   it('Crit Factor starts at 150% once unlocked (director, Nov 19)', () => {
@@ -57,12 +57,12 @@ describe('hero sheets', () => {
     const rm = new RunManager(data, new MemoryMetaStore());
     expect(rm.setParty([])).toBe(false);
     expect(rm.setParty(['Warrior', 'Warrior'])).toBe(false);
-    expect(rm.setParty(['Warrior', 'Barbarian'])).toBe(false);
-    expect(rm.setParty(['Priest'])).toBe(false);
+    expect(rm.setParty(['Warrior', 'Barbarian'])).toBe(true);
+    expect(rm.setParty(['Warrior', 'Mage', 'Assassin', 'Priest'])).toBe(false);   // three slots
+    expect(rm.setParty(['Nobody'])).toBe(false);
     expect(rm.setParty(['Assassin'])).toBe(true);
     expect(rm.getHeroes().filter((h) => h.active).map((h) => h.className)).toEqual(['Assassin']);
-    expect(rm.autoParty()).toEqual(['Warrior', 'Mage', 'Assassin']);
-    rm.getMeta().priestUnlocked = true;
+    // One hero per role first: a tank, a healer, a ranged damage dealer (not two tanks).
     expect(rm.autoParty()).toEqual(['Warrior', 'Priest', 'Mage']);
   });
 });

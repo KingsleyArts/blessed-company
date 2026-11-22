@@ -1,15 +1,14 @@
 // Roster port (Core/Roster.h): which heroes are owned and which go on the next expedition (draft rules, Nov 18).
-// Warrior, Mage and Assassin are owned from the start; the Priestess once rescued. Up to kActiveSlots active, at least one.
+// All six heroes are owned (director, Nov 21: unlock them all for the prototype; how they are earned is decided later). The default party is
+// Warrior, Mage and Priestess (the Priestess joins it once granted; see runManager.grantStartingPriest). Up to kActiveSlots active, at least one.
 import type { MetaSave } from './metaSave';
 
 export const kActiveSlots = 3;
 export const rosterPriestClass = (): string => 'Priest';
 
-export function ownedHeroes(m: MetaSave): string[] {
-  const v = ['Warrior', 'Mage', 'Assassin'];
-  if (m.priestUnlocked) v.push(rosterPriestClass());
-  return v;
-}
+export const kAllHeroes = ['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner'];
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the save is kept so ownership can become progress-based again later
+export function ownedHeroes(_m: MetaSave): string[] { return [...kAllHeroes]; }
 
 export const rosterOwns = (m: MetaSave, hero: string): boolean => ownedHeroes(m).includes(hero);
 
@@ -22,7 +21,7 @@ export function activeParty(m: MetaSave): string[] {
   }
   if (out.length === 0) {
     out.push('Warrior', 'Mage');
-    if (m.priestUnlocked) out.push(rosterPriestClass());
+    if (m.priestUnlocked) out.push(rosterPriestClass()); // the Priestess starts every game; soaks without her keep the Warrior + Mage start
   }
   return out;
 }

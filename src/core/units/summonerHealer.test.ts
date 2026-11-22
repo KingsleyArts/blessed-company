@@ -1,0 +1,99 @@
+// The healer Summoner and tank Barbarian (director, Nov 21): the Summoner fires Spirit Bolt itself while its spirits heal the most hurt
+// ally; the Barbarian is a front-line tank with Rage. The Nov 12 versions stay covered by summoner.test.ts and barbarian.test.ts.
+import { describe, it } from 'vitest';
+import { Behavior, CombatSim, kHealBase } from '../combatSim';
+import { DamageTag } from '../eventBus';
+import { CHECK, Dummy, Freeze, NEAR, Place, StepSeconds, data } from '../combatTestKit';
+
+/** Summoner at the origin, a hurt Warrior beside it, a far Grunt dummy in bolt range; everything frozen. */
+function scene(warriorHpShare = 0.5) {
+  const s = new CombatSim(data, 3);
+  const su = s.addPartyUnit('Summoner');
+  const w = s.addPartyUnit('Warrior');
+  Freeze(s, su); Freeze(s, w);
+  Place(s, su, 0, 0); Place(s, w, 100, 100);
+  const g = Dummy(s, 'Grunt', 600, 0);
+  Freeze(s, g);
+  s.mutableUnit(su)!.abilityId = ''; // no Greater Spirit unless a test casts it
+  s.startFight();
+  s.mutableUnit(w)!.hp = s.maxHp(s.getUnit(w)!) * warriorHpShare;
+  return { s, su, w, g };
+}
+
+describe('healer Summoner', () => {
+  it('IsAHealerWhoFiresSpiritBoltItself', () => {
+    const row = data.findClassRow('Summoner')!;
+    CHECK(row.RoleTag === 'Healer' && row.AutoActionId === 'SpiritBolt', 'row');
+    const { s, su, g } = scene(1);
+    CHECK(s.getUnit(su)!.behavior === Behavior.Backline, 'backline');
+    const hits: { amount: number; tags: number }[] = [];
+    s.getBus().subscribe('DamageDealt', (e) => { if (e.source === su) hits.push({ amount: e.amount, tags: e.tags }); });
+    StepSeconds(s, 10);
+    CHECK(hits.length >= 7, `bolts ${hits.length}`);
+    NEAR(hits[0].amount, row.BaseStats.Damage, 1e-6, 'bolt');
+    CHECK((hits[0].tags & DamageTag.Auto) !== 0 && (hits[0].tags & DamageTag.Summon) === 0, 'tags');
+    CHECK(s.getUnit(g)!.hp < s.maxHp(s.getUnit(g)!), 'the Grunt took damage');
+  });
+
+  it('TheWeaponSpiritHealsTheMostHurtAllyAndNeverAttacks', () => {
+    const { s, su, w } = scene(0.5);
+    const spirit = s.getUnits().find((u) => u.weapon && u.owner === su)!;
+    const heals: { src: number; amount: number }[] = [];
+    s.getBus().subscribe('HealApplied', (e) => heals.push({ src: e.source, amount: e.effectiveAmount }));
+    const spiritHits: number[] = [];
+    s.getBus().subscribe('DamageDealt', (e) => { if (e.source === spirit.id) spiritHits.push(e.amount); });
+    const before = s.getUnit(w)!.hp;
+    StepSeconds(s, 6);
+    CHECK(spiritHits.length === 0, 'spirit never damages');
+    CHECK(heals.length >= 4 && heals.every((h) => h.src === su), `heals credit the Summoner: ${heals.length}`);
+    NEAR(heals[0].amount, kHealBase * s.config().spiritHealScale, 1e-6, 'pulse');
+    CHECK(s.getUnit(w)!.hp > before, 'the Warrior healed');
+  });
+
+  it('NothingHurtMeansNoHealing', () => {
+    const { s } = scene(1);
+    let heals = 0;
+    s.getBus().subscribe('HealApplied', () => { ++heals; });
+    StepSeconds(s, 5);
+    CHECK(heals === 0, 'no heals');
+  });
+
+  it('GreaterSpiritIsAStationaryBiggerHealer', () => {
+    const { s, su, w } = scene(0.2);
+    s.mutableUnit(w)!.hp = 1; // keep her hurt for a long time
+    s.mutableUnit(su)!.abilityId = 'GreaterSpirit';
+    CHECK(s.forceCastAbility(su), 'cast');
+    const big = s.getUnits().find((u) => u.greater && u.alive)!;
+    CHECK(big.spiritHeals && big.moveSpeed === 0, 'healing and stationary');
+    const heals: number[] = [];
+    s.getBus().subscribe('HealApplied', (e) => heals.push(e.effectiveAmount));
+    StepSeconds(s, 5);
+    CHECK(Math.max(...heals) >= kHealBase * s.config().greaterSpiritHealScale - 1e-6, 'a big pulse');
+    const o = s.getUnit(su)!;
+    CHECK(Math.hypot(big.x - o.x, big.y - o.y) < 250, 'stays beside the Summoner (unit separation may nudge it)');
+  });
+
+  it('TheTuningMultipliersScaleSpiritHealing', () => {
+    const run = (mult: number) => {
+      const { s, w } = scene(0.5);
+      s.mutableConfig().abilityPowerMult.set('SpiritHeal', mult);
+      s.mutableUnit(w)!.hp = 1;
+      let first = 0;
+      s.getBus().subscribe('HealApplied', (e) => { if (!first) first = e.effectiveAmount; });
+      StepSeconds(s, 3);
+      return first;
+    };
+    NEAR(run(2), run(1) * 2, 1e-6, 'x2');
+  });
+});
+
+describe('tank Barbarian', () => {
+  it('IsAFrontlineTankWithRage', () => {
+    const row = data.findClassRow('Barbarian')!;
+    CHECK(row.RoleTag === 'Tank' && row.AbilityId === 'Rage' && row.BaseStats.HP > 160 && row.BaseStats.DefensePct > 10, 'row');
+    const s = new CombatSim(data, 1);
+    const b = s.addPartyUnit('Barbarian');
+    CHECK(s.getUnit(b)!.behavior === Behavior.Frontline, 'frontline');
+    CHECK(!s.getUnit(b)!.healer, 'not a healer');
+  });
+});
