@@ -16,7 +16,8 @@ export const DamageTag = {
 export interface FightStarted { fightIndex: number }
 export interface FightEnded { fightIndex: number; partyWon: boolean }
 export interface AttackStarted { attacker: UnitId; target: UnitId }
-export interface DamageDealt { source: UnitId; target: UnitId; amount: number; crit: boolean; tags: number }
+/** `ability`: the AbilityData id when an ability's effect or Bloodrush's landing dealt it (reports name sources by it); '' for autos and the rest. */
+export interface DamageDealt { source: UnitId; target: UnitId; amount: number; crit: boolean; tags: number; ability?: string }
 export interface DamageTaken { target: UnitId; source: UnitId; amount: number; crit: boolean; tags: number }
 export interface HealApplied { source: UnitId; target: UnitId; effectiveAmount: number }
 export interface AbilityCast { caster: UnitId; abilityId: string }

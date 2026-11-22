@@ -12,6 +12,7 @@ import { roomTypeName } from '../core/runFlow';
 import type { SlotCard } from '../ui/saves';
 import { classColor, hex } from './draw';
 import type { FloorSizeDebug } from '../ui/floorSizeDebug';
+import { parseReport, serializeReport, type ExpeditionReport } from '../core/expeditionReport';
 import { loadFloorSize, loadSettings, saveFloorSize, saveSettings, type Settings } from './localStore';
 import { SlotStore, defaultSlotName, kSlotCount, kSlotsPerPage, type SlotInfo } from './saveSlots';
 import { Music } from './music';
@@ -50,7 +51,7 @@ export class RunScene extends Phaser.Scene {
     this.store = new SlotStore();
     this.store.migrateLegacy();
     if (this.params.reset) for (let i = 0; i < kSlotCount; ++i) this.store.erase(i);
-    this.rm = new RunManager(data, this.store, makeRunManagerOptions({ enemyMult: this.params.enemyMult, castTimes: this.params.castTimes, priestFromStart: true, gearChoice: true }));
+    this.rm = new RunManager(data, this.store, makeRunManagerOptions({ enemyMult: this.params.enemyMult, castTimes: this.params.castTimes, priestFromStart: true, gearChoice: true, permanentGear: true }));
     if (this.params.testing) this.rm.setFloorSize(loadFloorSize());
     this.room = new RoomView(this.rm);
     this.rm.setTransitionHook(this.room);
@@ -66,6 +67,8 @@ export class RunScene extends Phaser.Scene {
     this.scale.on('resize', () => this.applyCamera());
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.hud.pointerMove(p.worldX, p.worldY));
+    this.input.on('pointerup', () => this.hud.pointerUp());
+    this.input.on('wheel', (p: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number) => { this.hud.wheel(p.worldX, p.worldY, dy); });
     // A run-over card or the Temple covers the room view only (the DOM takes those clicks), so the HUD around it still works, as in
     // Unreal where the card's blocker hit box covers the room area only.
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.hud.pointerDown(p.worldX, p.worldY));
@@ -79,7 +82,7 @@ export class RunScene extends Phaser.Scene {
     this.overlay.onRerender = () => this.showTemple();
     this.rm.onChange((c) => {
       if (c === RunChange.RunStarted || c === RunChange.FloorChanged) this.room.rebuildForRun();
-      if (c === RunChange.RunEnded) this.showResults();
+      if (c === RunChange.RunEnded) { this.currentReport(); this.showResults(); }   // currentReport() keeps the finished run's report in the slot
       if (c === RunChange.RunStarted) this.overlay.hide();
       if (c === RunChange.MetaChanged && this.overlay.kind === 'temple') this.showTemple();
       // Save slots: the run save goes to the slot as soon as it is taken (or is removed when the run ends).
@@ -206,15 +209,30 @@ export class RunScene extends Phaser.Scene {
     this.infoClock = 0;
   }
 
+  /** The report the Temple shows: the run that just ended (also written to the slot), else the last one kept there, until a new run ends. */
+  private currentReport(): ExpeditionReport | undefined {
+    const slot = this.store.slot;
+    const r = this.rm.getRunResults();
+    if (r.valid) {
+      const report: ExpeditionReport = {
+        victory: r.victory, lines: formatResultLines(r.causeOfDeath, r.killerName, r.floorReached, r.roomsCleared, r.kills, r.essenceEarned, r.goldEarned, r.bestFloor),
+        damage: r.damage, rooms: r.rooms,
+      };
+      if (slot !== undefined) {
+        const text = serializeReport(report);
+        if (this.store.report(slot) !== text) this.store.setReport(slot, text);
+      }
+      return report;
+    }
+    return slot === undefined ? undefined : parseReport(this.store.report(slot));
+  }
+
   /** The Temple home screen; the last run's results show under its Expedition Report tab. */
   private showTemple(): void {
     this.rm.grantStartingPriest();
     const t = this.rm.getTempleSnapshot(amountValue(this.hud.ui.amountMode));
     if (!t.valid) return;
-    const r = this.rm.getRunResults();
-    const report = r.valid
-      ? { victory: r.victory, lines: formatResultLines(r.causeOfDeath, r.killerName, r.floorReached, r.roomsCleared, r.kills, r.essenceEarned, r.goldEarned, r.bestFloor) }
-      : undefined;
+    const report = this.currentReport();
     this.overlay.showTemple(t, this.rm.getFlow().getRun().essence, this.hud.ui.amountMode, this.music.getVolume(), report, {
       buy: (id) => { this.rm.templeBuy(id, amountValue(this.hud.ui.amountMode)); },
       amount: (m) => { this.hud.ui.amountMode = m; this.showTemple(); },

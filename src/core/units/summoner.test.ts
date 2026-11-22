@@ -114,7 +114,7 @@ describe('units: Summoner base stats and data', () => {
     CHECK(r.RetreatDistance < Cls('Priest').RetreatDistance);
     CHECK(r.MoveSpeed < Cls('Warrior').MoveSpeed);
     CHECK(r.AllowedStats.includes('SpiritDamage') && r.AllowedStats.includes('SpiritDuration'));
-    CHECK(r.AllowedStats.length === 14);
+    CHECK(r.AllowedStats.length === 15 && r.AllowedStats.includes('HealPower'));   // Heal Power joined Nov 22 (a healer stat)
     CHECK(r.AllowedTargetTypes.length > 0);
   });
 });

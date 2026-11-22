@@ -21,7 +21,8 @@ import { kMetaMaxGold, makeMeta, parseMeta, resetProgress, serializeMeta, type M
 import { MiracleKind, MiracleResult } from './miracleGauge';
 import { RosterResult, activeParty, kActiveSlots, rosterIsActive, rosterOwns, rosterPriestClass, toggleActiveHero } from './roster';
 import { RunBot } from './runBot';
-import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, runOutcomeName, type PendingGear, type RoomEntry, type RunResults } from './runFlow';
+import { RunStats, type DamageReport, type RoomDamage } from './runStats';
+import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, roomTypeName, runOutcomeName, type PendingGear, type RoomEntry, type RunResults } from './runFlow';
 import { buildMapView, type MapView } from './runMapView';
 import { parseRunSave, serializeRunSave } from './runSave';
 import { heroLabel, heroSkills, heroStatLines, kHeroOrder, roleLabel, rolePriority, type HeroSheet } from './heroSheet';
@@ -88,6 +89,9 @@ export interface RunResultsView {
   kills: number;
   roomsCleared: number;
   bestFloor: number;
+  /** Expedition Report breakdowns (empty until a run has been fought). */
+  damage: DamageReport;
+  rooms: RoomDamage[];
 }
 
 export interface SidebarRowView {
@@ -144,6 +148,8 @@ export interface TempleItem {
   cost: number;
   maxed: boolean;
   canBuy: boolean;
+  /** Information only (the Equipment tab in permanent gear mode): `level` is the levels gained. */
+  gained?: boolean;
 }
 
 export interface RosterEntry { className: string; label: string; owned: boolean; active: boolean; note: string }
@@ -159,9 +165,12 @@ export interface RunManagerOptions {
   priestFromStart: boolean;
   /** Found gear waits for the player to choose the hero (director, Nov 21). Off gives it to a random hero (soaks, parity rules). */
   gearChoice: boolean;
+  /** Gear upgrades are permanent levels that roll against a chance falling with the slot's level (director, Nov 22). Off keeps temporary
+   *  dungeon levels plus Temple purchases (soaks, parity rules). */
+  permanentGear: boolean;
 }
 
-export const makeRunManagerOptions = (over: Partial<RunManagerOptions> = {}): RunManagerOptions => ({ enemyMult: 1.3, castTimes: true, priestFromStart: false, gearChoice: false, ...over });
+export const makeRunManagerOptions = (over: Partial<RunManagerOptions> = {}): RunManagerOptions => ({ enemyMult: 1.3, castTimes: true, priestFromStart: false, gearChoice: false, permanentGear: false, ...over });
 
 /** The test setup of the next playable run (one shot): start floor and the Priest already in the party (tol.NextRun). */
 export interface NextRunSetup { startFloor: number; priest: boolean }
@@ -177,6 +186,7 @@ interface Timer { at: number; fn: () => void }
 export class RunManager {
   // ---- run layer ----
   private flow = new RunFlow();
+  private stats = new RunStats();
   private floorSize: FloorSize | undefined;
   private meta: MetaSave = makeMeta();
   private metaLoaded = false;
@@ -265,6 +275,10 @@ export class RunManager {
 
   /** Found gear still waiting for the player to pick a hero (empty unless the gearChoice option is on). */
   getPendingGear(): readonly PendingGear[] { return this.flow.getPendingGear(); }
+  /** Levels gained in this slot (permanent mode), or Temple plus this run's dungeon levels. */
+  gearSlotLevel(className: string, slot: GearSlot): number { return gearLevel(this.meta, this.flow.getDungeonGear(), className, slot); }
+  /** Chance the next upgrade lands on this slot right now (1 in the old temporary mode). */
+  gearUpgradeChance(className: string, slot: GearSlot): number { return this.flow.upgradeChanceFor(className, slot); }
   /** The player gives the oldest pending piece of gear to `className`. */
   assignPendingGear(className: string): boolean {
     if (!this.flow.assignGear(0, className)) return false;
@@ -296,15 +310,20 @@ export class RunManager {
     if (drops.length > 0) {
       for (const d of drops) {
         const weapon = d.slot === GearSlot.Weapon;
-        this.lastGearDropText = `Found: ${d.className} ${weapon ? 'weapon' : 'armor'} +${d.dungeonLevel} (${weapon ? 'Damage' : 'Health'} +10%)`;
+        const what = `${d.className} ${weapon ? 'weapon' : 'armor'}`;
+        this.lastGearDropText = d.landed
+          ? `${d.className === 'Priest' ? 'Priestess' : d.className}: ${weapon ? 'weapon' : 'armor'} +${d.dungeonLevel} (${weapon ? 'Damage' : 'Health'} +${d.dungeonLevel * 10}%)`
+          : `The upgrade did not take: ${what} stays at +${d.dungeonLevel}`;
         this.lastGearDropTime = this.clock;
       }
+      if (this.opts.permanentGear && drops.some((d) => d.landed)) this.saveMeta();   // the levels are permanent
       this.pushEssenceToSim();
       this.notify(RunChange.EssenceChanged);
     }
   }
 
   private applyMetaToFlow(flow: RunFlow = this.flow): void {
+    flow.setPermanentGear(this.opts.permanentGear ? this.meta.gearLevels : undefined);
     flow.setEssenceContext(this.meta.unlockedStats, new Map());
     flow.setTempleLevels(this.meta.statLevels);
     flow.setPartyLuck({
@@ -333,6 +352,7 @@ export class RunManager {
 
   private flowStart(seed: number, testSetup: boolean): void {
     this.flow = new RunFlow();
+    this.stats.reset();
     this.flow.setGearChoice(this.opts.gearChoice);
     if (this.floorSize) this.flow.setFloorSize(this.floorSize);
     this.ensureMetaLoaded();
@@ -359,6 +379,7 @@ export class RunManager {
     cfg.enemyStatMult = Math.fround(this.opts.enemyMult);
     if (this.opts.castTimes) installShippedCastTimes(cfg);
     cfg.randomEnemySpawn = true;
+    cfg.greaterSpiritPersists = true;   // a Greater Spirit waits out the gap between fights
     return cfg;
   }
 
@@ -371,11 +392,22 @@ export class RunManager {
     const sim = this.sim!;
     this.staged = false;
     sim.startFight();
+    this.trackStats(sim);
     this.heldShields.clear();   // held shields now tick down in this fight
     this.accumulator = 0;
     this.finishHandled = false;
     this.bodiesCleared = false;
     this.subscribeKills();
+  }
+
+  /** Feeds the Expedition Report: damage dealt and taken, filed under the room the party is in. */
+  private trackStats(sim: CombatSim): void {
+    for (const u of sim.getUnits()) if (!u.enemy && !u.summon && !u.removed) this.stats.noteHero(u.name);
+    this.stats.attach(sim, this.data, () => {
+      const run = this.flow.getRun();
+      const node = run.floor.nodes[run.currentNode];
+      return { floor: run.floorNumber, node: run.currentNode, type: node ? roomTypeName(node.type) : '?' };
+    });
   }
 
   private subscribeKills(): void {
@@ -538,6 +570,7 @@ export class RunManager {
     flow.setGearChoice(this.opts.gearChoice);
     if (this.floorSize) flow.setFloorSize(this.floorSize);
     this.flow = flow;
+    this.stats.reset();   // a resumed run starts its report afresh
     this.applyMetaToFlow();
     flow.setPriestOwned(this.meta.priestUnlocked);
     if (!flow.restore(cp.flow)) {
@@ -885,13 +918,14 @@ export class RunManager {
     const r: RunResults = this.flow.getResults();
     const out: RunResultsView = {
       valid: false, victory: false, outcome: '', floorReached: 0, essenceEarned: 0, goldEarned: 0, seed: 0n, causeOfDeath: '', killerName: '',
-      priestRescued: false, kills: 0, roomsCleared: 0, bestFloor: 0,
+      priestRescued: false, kills: 0, roomsCleared: 0, bestFloor: 0, damage: { total: 0, heroes: [] }, rooms: [],
     };
     if (this.flow.active() || r.outcome === RunOutcome.InProgress) return out;
     return {
       valid: true, victory: r.outcome === RunOutcome.Victory, outcome: runOutcomeName(r.outcome), floorReached: r.floorReached,
       essenceEarned: r.essenceEarned, goldEarned: r.goldEarned, seed: BigInt(r.seed), causeOfDeath: r.causeOfDeath, killerName: r.killerName,
       priestRescued: r.priestRescued, kills: r.kills, roomsCleared: r.roomsCleared, bestFloor: this.meta.bestFloor,
+      damage: this.stats.damageReport(), rooms: this.stats.roomReport(),
     };
   }
 
@@ -958,9 +992,10 @@ export class RunManager {
     return r;
   }
 
-  previewBuy(ch: number, stat: string, amount: number): BuyResult {
+  /** What buying `amount` would do; `essence` overrides the run's Essence (pass Infinity for the full price regardless of what is affordable). */
+  previewBuy(ch: number, stat: string, amount: number, essence?: number): BuyResult {
     if (!this.flow.active()) return { bought: 0, spent: 0, newRank: 0, refusal: BuyRefusal.NoCharacter, reason: 'No run in progress' };
-    return this.flow.getSidebar().preview(ch, stat, amount, this.flow.getRun().essence);
+    return this.flow.getSidebar().preview(ch, stat, amount, essence ?? this.flow.getRun().essence);
   }
 
   // ------------------------------------------------------------------------------------------ miracles (the HUD calls these)
@@ -1003,11 +1038,19 @@ export class RunManager {
       });
     }
     const cfg = defaultTempleConfig();
-    for (const cls of kTempleClasses) {
+    for (const cls of this.opts.permanentGear ? kHeroes : kTempleClasses) {   // permanent gear is earned by every hero
       for (let slot = 0; slot < kGearSlotCount; ++slot) {
         const weapon = slot === 0;
         const level = gearTempleLevel(m, cls, weapon ? GearSlot.Weapon : GearSlot.Armor);
         const cost = gearNextCost(cfg, level);
+        if (this.opts.permanentGear) {   // levels are earned in the dungeon: this tab only shows how many each piece has gained
+          s.items.push({
+            column: 0, id: `Gear:${cls}:${slot}`, label: `${cls === 'Priest' ? 'Priestess' : cls} ${weapon ? 'weapon' : 'armor'}`,
+            detail: `${weapon ? 'Damage' : 'Health'} +${Math.round(level * cfg.gearBonusPerLevel * 100)}% from ${level} level${level === 1 ? '' : 's'} gained`,
+            level, maxLevel: 0, maxed: false, cost: 0, canBuy: false, gained: true,
+          });
+          continue;
+        }
         s.items.push({
           column: 0, id: `Gear:${cls}:${slot}`, label: `${cls} ${weapon ? 'weapon' : 'armor'}`,
           detail: `${weapon ? 'Damage' : 'Health'} +${Math.round(cfg.gearBonusPerLevel * 100)}% per level`, level, maxLevel: kGearMaxTempleLevel,
@@ -1064,6 +1107,7 @@ export class RunManager {
       if (r !== RosterResult.Added && r !== RosterResult.Removed) return false;
       ok = true;
     } else if (parts.length === 3 && parts[0] === 'Gear') {
+      if (this.opts.permanentGear) return false;
       ok = buyGear(this.meta, parts[1], parts[2] === '0' ? GearSlot.Weapon : GearSlot.Armor).ok;
     } else if (parts.length === 2 && parts[0] === 'Stat') {
       ok = buyStatUnlock(this.meta, parts[1]).ok;

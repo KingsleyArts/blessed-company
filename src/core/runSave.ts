@@ -74,7 +74,7 @@ export function parseRunSave(text: string | undefined): RunCheckpoint | undefine
   if (!isBool(f.crystalFound) || !isBool(f.bossKilled) || !isBool(f.priestRescued)) return undefined;
   if (!isInt(f.floorKills) || !isInt(f.runKills) || !isInt(f.roomsCleared) || !isNum(f.essenceEarned) || !isNum(f.essenceSpent)) return undefined;
   if (!isPairList(f.dungeonGear)) return undefined;
-  let pendingGear: { slot: number; suggested: string }[] | undefined;
+  let pendingGear: { slot: number; suggested: string; party?: boolean }[] | undefined;
   if (f.pendingGear !== undefined) {
     if (!Array.isArray(f.pendingGear)) return undefined;
     pendingGear = [];
@@ -82,7 +82,7 @@ export function parseRunSave(text: string | undefined): RunCheckpoint | undefine
       if (typeof p !== 'object' || p === null) return undefined;
       const pj = p as Json;
       if (!isInt(pj.slot) || !isStr(pj.suggested)) return undefined;
-      pendingGear.push({ slot: pj.slot, suggested: pj.suggested });
+      pendingGear.push({ slot: pj.slot, suggested: pj.suggested, ...(pj.party === true ? { party: true } : {}) });
     }
   }
   if (!Array.isArray(f.sidebar)) return undefined;

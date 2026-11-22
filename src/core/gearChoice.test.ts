@@ -35,7 +35,7 @@ describe('run gear choice', () => {
     expect(f.assignGear(0, 'Mage')).toBe(true);
     expect(f.getPendingGear().length).toBe(0);
     expect(f.getDungeonGear().get(gearKey('Mage', pending[0].slot))).toBe(1);
-    expect(f.consumeGearDrops()).toEqual([{ className: 'Mage', slot: pending[0].slot, dungeonLevel: 1 }]);
+    expect(f.consumeGearDrops()).toEqual([{ className: 'Mage', slot: pending[0].slot, dungeonLevel: 1, landed: true }]);
   });
 
   it('the same seed rolls the same pieces in both modes, and the suggested hero is the old random pick', () => {

@@ -42,7 +42,7 @@ function set(key: string, value: string | undefined): void {
     /* session only */
   }
 }
-const key = (slot: number, part: 'meta' | 'run' | 'info'): string => `${kPrefix}${slot + 1}.${part}`;
+const key = (slot: number, part: 'meta' | 'run' | 'info' | 'report'): string => `${kPrefix}${slot + 1}.${part}`;
 
 export function defaultSlotName(slot: number): string {
   return slot === 0 ? 'Blessed Company' : `Save ${slot + 1}`;
@@ -95,9 +95,13 @@ export class SlotStore implements MetaStore {
   runSave(slot: number): string | undefined { return get(key(slot, 'run')); }
   setRunSave(slot: number, text: string | undefined): void { set(key(slot, 'run'), text); }
 
-  /** Erases the slot: progress, run save and card. */
+  /** The last finished run's Expedition Report (serializeReport text); kept until the next run ends. */
+  report(slot: number): string | undefined { return get(key(slot, 'report')); }
+  setReport(slot: number, text: string | undefined): void { set(key(slot, 'report'), text); }
+
+  /** Erases the slot: progress, run save, report and card. */
   erase(slot: number): void {
-    for (const p of ['meta', 'run', 'info'] as const) set(key(slot, p), undefined);
+    for (const p of ['meta', 'run', 'info', 'report'] as const) set(key(slot, p), undefined);
   }
 
   lastSlot(): number | undefined {

@@ -8,7 +8,7 @@ import { MiracleKind, MiracleResult, miracleName, miracleTargetsEnemy } from '..
 import type { FloorSnapshot, RunManager, SidebarSnapshot } from '../core/runManager';
 import { amountLabel, amountValue, formatBonusChange, formatBuyButton, formatCount, formatValueChange, roomLabel, statDisplayName } from '../core/uiText';
 import {
-  MapGeometry, Rect, UiState, arrowRect, computeEssenceLayout, computeLayout, computeMinimapRegions, computeRoomControls, cooldownFraction,
+  type EssenceLayout, MapGeometry, kVisibleEssenceRows, Rect, UiState, arrowRect, computeEssenceLayout, computeLayout, computeMinimapRegions, computeRoomControls, cooldownFraction,
   fillFraction, portraitAt, type Layout,
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, fitScale, kBaseFontPx, kTextDim, kTextLight, lin, outline } from './draw';
@@ -16,7 +16,7 @@ import { HudGraphics, type IconName, blueGem, goldGem, icon, kHud, ornatePanel, 
 import { themeById } from '../ui/roomTheme';
 import { kThemeId, roomHaze, type RoomView } from './roomView';
 import { heroLabel } from '../core/heroSheet';
-import { GearSlot, gearKey } from '../core/temple';
+import { GearSlot } from '../core/temple';
 import { readability } from './combatText';
 import { heroFaceKey, spriteSizes } from './heroMotion';
 import { loadTuning, saveTuning } from './localStore';
@@ -92,6 +92,11 @@ export class Hud {
   private sideDirty = true;
   private sideTimer = 0;
   private flashRow = -1;
+  /** Essence menu scroll: the first stat row shown, the layout last drawn (for the wheel and the thumb) and a thumb drag in progress. */
+  private essScroll = 0;
+  private essFor = -1;
+  private essLayout: EssenceLayout | undefined;
+  private essPress: { stat: string | undefined; y0: number; scroll0: number; moved: boolean } | undefined;
   private flashAge = 9;
   private flashRefused = false;
   private armed: MiracleKind | undefined;
@@ -200,7 +205,32 @@ export class Hud {
   }
 
   // ------------------------------------------------------------------------------------------ input
-  pointerMove(x: number, y: number): void { this.mouse = { x, y }; }
+  pointerMove(x: number, y: number): void {
+    this.mouse = { x, y };
+    const p = this.essPress, E = this.essLayout;
+    if (!p || !E) return;
+    // A swipe on the Essence menu (finger or mouse) scrolls its rows with the finger; a press that never moved is a tap.
+    if (!p.moved && Math.abs(y - p.y0) > 8 * this.scale) p.moved = true;
+    if (p.moved) this.essScroll = Math.max(0, Math.min(E.maxFirst, p.scroll0 - (y - p.y0) / Math.max(1, E.slotH)));
+  }
+  pointerUp(): void {
+    const p = this.essPress;
+    this.essPress = undefined;
+    if (p && !p.moved && p.stat !== undefined) this.buy(p.stat);   // buying waits for the release so a swipe over a button does not buy
+  }
+  /** The mouse wheel over the Essence menu scrolls its stat rows; true when it was used. */
+  wheel(x: number, y: number, deltaY: number): boolean {
+    const E = this.essLayout;
+    if (!E || E.maxFirst <= 0 || !E.panel.contains(x, y) || deltaY === 0) return false;
+    this.essScroll = Math.max(0, Math.min(E.maxFirst, E.first + (deltaY > 0 ? 1 : -1)));
+    return true;
+  }
+  /** An arrow on the Essence menu: scrolls most of a page (as the Temple's arrows do). */
+  private essenceArrow(dir: number): void {
+    const E = this.essLayout;
+    if (!E) return;
+    this.essScroll = Math.max(0, Math.min(E.maxFirst, E.first + dir * (kVisibleEssenceRows - 1)));
+  }
 
   pointerDown(x: number, y: number): boolean {
     this.mouse = { x, y };
@@ -585,6 +615,10 @@ export class Hud {
         const p = this.rm.previewBuy(s.characterIndex, row.stat, amount);
         if (p.bought > 0) { cost = p.spent; bought = p.bought; }
       }
+      if (amount > 1 && bought < amount && (row.maxRank <= 0 || row.rank < row.maxRank)) {   // can't afford the full selection: still show its full price
+        const p = this.rm.previewBuy(s.characterIndex, row.stat, amount, 1e18);
+        if (p.bought > 0) cost = p.spent;
+      }
       this.previewCost.push(cost);
       this.previewBought.push(bought);
     }
@@ -598,7 +632,10 @@ export class Hud {
       this.texts.centered('es.none', 'No run', L.essence, kBaseFontPx * 0.95 * S, lin(0.5, 0.48, 0.46), 0.6);
       return;
     }
-    const E = computeEssenceLayout(L.essence, side.rows.length, S);
+    if (this.essFor !== side.characterIndex) { this.essFor = side.characterIndex; this.essScroll = 0; }   // each hero starts at the top
+    const E = computeEssenceLayout(L.essence, side.rows.length, S, this.essScroll);
+    this.essScroll = E.first;
+    this.essLayout = E;
     const member = side.party[side.characterIndex];
     const cls = member ? member.className : side.characterName;
     const col = classColor(cls);
@@ -617,8 +654,9 @@ export class Hud {
     const half = new Rect(gx + gi + 4 * S, E.gearSlot.y, E.gearSlot.right() - (gx + gi + 8 * S), gh);
     this.texts.fit('es.w', gearText('Weapon', side.weaponLevel, side.weaponDrops), half, kBaseFontPx * 1.05 * S, kTextLight);
     this.texts.fit('es.a', gearText('Armor', side.armorLevel, side.armorDrops), new Rect(half.x, half.y + half.h, half.w, half.h), kBaseFontPx * 1.05 * S, kTextLight);
-    for (let i = 0; i < E.rows.length && i < side.rows.length; ++i) {
-      const R = E.rows[i];
+    for (let k = 0; k < E.rows.length && E.first + k < side.rows.length; ++k) {
+      const i = E.first + k;   // the stat; k is its place on screen (text keys follow the place)
+      const R = E.rows[k];
       const row = side.rows[i];
       plate(this.g, R.row, S, kHud.well, { edge: 0x5d4530, radius: 3 * S, sheen: 0.025 });
       if (i === this.flashRow && this.flashAge < 0.45) {
@@ -631,20 +669,20 @@ export class Hud {
       icon(this.g, statIcon(row.stat), ix, R.row.y + R.row.h / 2, rs);
       const tx = ix + rs + 6 * S;
       const value = row.showValue ? formatValueChange(row.valueNow, row.valueNext) : formatBonusChange(row.currentBonus, row.nextBonus, row.unit);
-      this.textPair(`es.n${i}`, statDisplayName(row.stat), kBaseFontPx * 1.3 * S, kTextLight, `es.v${i}`, value, kBaseFontPx * 1.2 * S, kHud.goldLit,
+      this.textPair(`es.n${k}`, statDisplayName(row.stat), kBaseFontPx * 1.3 * S, kTextLight, `es.v${k}`, value, kBaseFontPx * 1.2 * S, kHud.goldLit,
         tx, R.button.x - 5 * S, R.name.y, R.name.h, R.values.x + 16 * S);
-      this.textPair(`es.r${i}`, `Rank ${row.rank}/${row.maxRank}`, kBaseFontPx * 1.05 * S, lin(0.75, 0.73, 0.7), `es.x${i}`, !row.canBuy && !max ? row.reason : '',
+      this.textPair(`es.r${k}`, `Rank ${row.rank}/${row.maxRank}`, kBaseFontPx * 1.05 * S, lin(0.75, 0.73, 0.7), `es.x${k}`, !row.canBuy && !max ? row.reason : '',
         kBaseFontPx * 0.95 * S, lin(0.95, 0.5, 0.45), tx, R.row.right() - 5 * S, R.rank.y, R.rank.h, tx);
       const want = amountValue(this.ui.amountMode);
       const full = want < 0 || (this.previewBought[i] ?? 0) >= want;
       const on = row.canBuy && full;
       const hover = on && R.button.contains(this.mouse.x, this.mouse.y);
       plate(this.g, R.button, S, on ? 0x7a5a24 : kHud.steel, { edge: on ? (hover ? kHud.goldLit : kHud.gold) : 0x6a6370, radius: 3 * S, sheen: on ? 0.16 : 0.08 });
-      const cost = on ? this.previewCost[i] ?? row.nextCost : row.nextCost;
-      const bought = on ? this.previewBought[i] ?? 0 : 0;
+      const cost = this.previewCost[i] ?? row.nextCost;
+      const bought = on && want < 0 ? this.previewBought[i] ?? 0 : 0;   // the count only matters for Max; x1/x10/x100 already say it
       const label = formatBuyButton(max, cost, bought);
       const ic = max ? 0 : 0.38 * R.button.h;
-      const t = this.texts.at(`es.b${i}`, label, 0, 0, kBaseFontPx * 1.45 * S, on ? lin(1, 0.97, 0.88) : kTextDim, 0, 0.5);
+      const t = this.texts.at(`es.b${k}`, label, 0, 0, kBaseFontPx * 1.45 * S, on ? lin(1, 0.97, 0.88) : kTextDim, 0, 0.5);
       const maxW = R.button.w - 10 * S;
       const gap = max ? 0 : 7 * S;
       const scale = Math.min(t.width + ic + gap > maxW ? maxW / (t.width + ic + gap) : 1, fitScale(t, maxW, R.button.h - 4 * S));
@@ -654,8 +692,25 @@ export class Hud {
       if (!max) goldGem(this.g, x0 + ic / 2, R.button.y + R.button.h / 2, ic * 0.48, ic * 0.68);
       t.setPosition(x0 + ic + gap, R.button.y + R.button.h / 2);
       const stat = row.stat;
-      if (on) this.hit(R.button, 1, () => this.buy(stat));
+      if (on) this.hit(R.button, 1, () => { this.essPress = { stat, y0: this.mouse.y, scroll0: this.essScroll, moved: false }; });   // buys on release (a swipe is not a tap)
     }
+    if (E.maxFirst > 0) {   // more stats than fit: swipe or wheel to scroll; arrows show which way there is more (like the Temple's)
+      const aw = 30 * S, ah = 18 * S;   // small, and straddling the menu's edges so they sit mostly in the gaps, clear of the row text
+      const pill = (up: boolean, on: boolean): void => {
+        const R = new Rect(E.viewport.x + (E.viewport.w - aw) / 2, up ? E.viewport.y - ah * 0.6 : E.viewport.bottom() - ah * 0.4, aw, ah);
+        plate(this.gTop, R, S, 0x180b26, { edge: R.contains(this.mouse.x, this.mouse.y) ? kHud.goldLit : kHud.gold, radius: ah / 2, sheen: 0 });
+        const cx = R.x + R.w / 2, cy = R.y + R.h / 2, w = ah * 0.34, h = ah * 0.16, d = up ? -1 : 1;
+        this.gTop.lineStyle(Math.max(1.5, 2 * S), kHud.goldLit, 1);
+        for (const o of [-0.2, 0.2]) {   // a double chevron
+          const y = cy + o * ah;
+          this.gTop.lineBetween(cx - w, y - d * h, cx, y + d * h).lineBetween(cx, y + d * h, cx + w, y - d * h);
+        }
+        if (on) this.hit(R, 3, () => this.essenceArrow(up ? -1 : 1));
+      };
+      if (E.first > 0) pill(true, true);
+      if (E.first < E.maxFirst) pill(false, true);
+    }
+    this.hit(E.viewport, 0, () => { this.essPress = { stat: undefined, y0: this.mouse.y, scroll0: this.essScroll, moved: false }; });
     for (let i = 0; i < 4; ++i) {
       const B = E.amount[i];
       const active = i === this.ui.amountMode;
@@ -782,10 +837,13 @@ export class Hud {
     plate(this.g, r, S, kHud.panel, { edge: kHud.goldLit, sheen: 0.05 });
     this.hit(r, 2, () => undefined);   // clicks on the banner do not reach the room
     const more = pending.length > 1 ? `  (${pending.length - 1} more waiting)` : '';
-    this.texts.centered('gc.title', `Found a ${weapon ? 'weapon' : 'armor'} upgrade (${weapon ? 'Damage' : 'Health'} +10%): who gets it?${more}`,
+    const perm = this.rm.getFlow().permanentGear();
+    const title = item.party
+      ? `Boss reward: every hero's ${weapon ? 'weapon' : 'armor'} upgrades (each on its own chance). Tap to claim${more}`
+      : `Found a ${weapon ? 'weapon' : 'armor'} upgrade (${weapon ? 'Damage' : 'Health'} +10%): who gets it?${more}`;
+    this.texts.centered('gc.title', title,
       new Rect(r.x, r.y + 4 * S, r.w, 26 * S), kBaseFontPx * 1.3 * S, lin(1, 0.92, 0.6));
     const pad = 8 * S, bw = (r.w - pad * (party.length + 1)) / party.length, bh = r.h - 36 * S - pad;
-    const gear = this.rm.getFlow().getDungeonGear();
     party.forEach((u, i) => {
       const b = new Rect(r.x + pad + i * (bw + pad), r.y + 34 * S, bw, bh);
       const hover = b.contains(this.mouse.x, this.mouse.y);
@@ -794,9 +852,12 @@ export class Hud {
       const face = new Rect(b.x + 5 * S, b.y + (b.h - fs) / 2, fs, fs);
       if (!this.face(`gc${i}`, u.name, face, !u.alive)) this.texts.centered(`gc.i${i}`, u.name.slice(0, 1), face, fs * 0.6, 0xffffff, 1, true);
       const tx = new Rect(face.right() + 6 * S, b.y, b.right() - face.right() - 10 * S, b.h);
-      const level = gear.get(gearKey(u.name, item.slot)) ?? 0;
+      const level = this.rm.gearSlotLevel(u.name, item.slot);
+      const chance = this.rm.gearUpgradeChance(u.name, item.slot);
+      const pctText = chance >= 1 ? '100%' : `${Math.max(1, Math.round(chance * 100))}%`;
       this.texts.fit(`gc.n${i}`, heroLabel(u.name), new Rect(tx.x, tx.y + 2 * S, tx.w, tx.h * 0.5), kBaseFontPx * 1.25 * S, kTextLight);
-      this.texts.fit(`gc.l${i}`, `${weapon ? 'Weapon' : 'Armor'} +${level} → +${level + 1}`, new Rect(tx.x, tx.y + tx.h * 0.5, tx.w, tx.h * 0.42), kBaseFontPx * 1.05 * S, kTextDim);
+      this.texts.fit(`gc.l${i}`, `${weapon ? 'Weapon' : 'Armor'} +${level} → +${level + 1}${perm ? `  ${pctText}` : ''}`,
+        new Rect(tx.x, tx.y + tx.h * 0.5, tx.w, tx.h * 0.42), kBaseFontPx * 1.05 * S, !perm || chance >= 1 ? kTextDim : lin(1, 0.78, 0.35));
       const cls = u.name;
       this.hit(b, 3, () => { this.rm.assignPendingGear(cls); this.sideDirty = true; });
     });
