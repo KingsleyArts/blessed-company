@@ -4,6 +4,7 @@
 import Phaser from 'phaser';
 import { CastKind, defaultCombatConfig, type CombatSim, type Unit } from '../core/combatSim';
 import { RoomType } from '../core/floorGenerator';
+import { kAutoModes } from '../core/runAuto';
 import { MiracleKind, MiracleResult, miracleName, miracleTargetsEnemy } from '../core/miracleGauge';
 import type { FloorSnapshot, RunManager, SidebarSnapshot, TuneBases } from '../core/runManager';
 import { amountLabel, amountValue, formatBonusChange, formatBuyButton, formatCount, formatValueChange, roomLabel, statDisplayName } from '../core/uiText';
@@ -430,8 +431,10 @@ export class Hud {
     // The three auto options (shield, scales, swords): drawn now, wired to their jobs next.
     const optIcons: [IconName, number][] = [['shield', 0x9fc4ff], ['scales', 0xf1dc8c], ['swords', 0xffb070]];
     L.autoOpts.forEach((r, k) => {
-      this.frame(r, btn, 1, hov(r), false);
-      icon(g, optIcons[k][0], r.x + r.w / 2, r.y + r.h / 2, r.h * 0.3, optIcons[k][1]);
+      const on = this.rm.autoMode === kAutoModes[k];
+      this.frame(r, on ? 0x2d5a35 : btn, 1, hov(r), on);
+      icon(g, optIcons[k][0], r.x + r.w / 2, r.y + r.h / 2, r.h * 0.3, on ? optIcons[k][1] : lin(0.55, 0.52, 0.58));
+      this.hit(r, 1, () => this.rm.setAutoMode(kAutoModes[k]));
     });
     this.hit(L.pause, 1, () => this.ui.togglePause());
     this.hit(L.speed, 1, () => this.ui.cycleSpeed(this.opts.testing ? 4 : 3));
@@ -461,7 +464,7 @@ export class Hud {
       this.texts.centered('b.banner', `${miracleName(this.armed)}: click ${foe ? 'the ground to strike the area' : 'a hero portrait'} (press the button again to cancel)`,
         banner, kBaseFontPx * 1.4 * S, lin(1, 0.95, 0.5));
     }
-    // The vertical gauge beside the miracle column: winged top, fills from the bottom; under it, how many of the cheapest miracle it can pay for.
+    // The vertical gauge beside the miracle column: winged top, fills from the bottom; under it, the current gauge value.
     const G = L.gauge;
     const wingS = G.w * 0.9;
     wing(g, G.x + G.w * 0.2, G.y - wingS * 0.1, wingS, -1);
@@ -475,8 +478,7 @@ export class Hud {
       g.fillStyle(0xf1dc8c, 1).fillRoundedRect(G.x + inset, G.bottom() - inset - fh, iw, fh, iw / 2);
       g.fillStyle(0xffffff, 0.3).fillRoundedRect(G.x + inset, G.bottom() - inset - fh, iw * 0.42, fh, iw * 0.2);
     }
-    const cheapest = sim ? Math.min(...[MiracleKind.DivineHealing, MiracleKind.DivineShield, MiracleKind.DivineSmite].map((k) => sim.getGauge().cost(k))) : 0;
-    this.texts.centered('b.gauge', `${cheapest > 0 ? Math.floor(gv / cheapest) : 0}`, L.gaugeCount, kBaseFontPx * 1.5 * S, kTextLight);
+    this.texts.centered('b.gauge', `${Math.trunc(gv)}`, L.gaugeCount, kBaseFontPx * 1.5 * S, kTextLight);
   }
 
   private arm(kind: MiracleKind): void {
