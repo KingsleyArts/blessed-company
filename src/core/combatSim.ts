@@ -1440,16 +1440,25 @@ export class CombatSim {
     return undefined;
   }
 
+  /** Who the party healer works on: a Tank-role ally below the low-health threshold first, else the most hurt ally below her smite threshold,
+   *  in Range or not (director, Nov 22). */
+  private healPriority(u: Unit): Unit | undefined {
+    const needy = this.allies(u).filter((a) => a.hp / this.maxHp(a) < u.smiteThreshold);
+    const low = (a: Unit): boolean => a.behavior === Behavior.Frontline && a.hp / this.maxHp(a) < this.cfg.allyLowThreshold;
+    const pool = needy.some(low) ? needy.filter(low) : needy;
+    let hurt: Unit | undefined;
+    for (const a of pool) if (!hurt || a.hp / this.maxHp(a) < hurt.hp / this.maxHp(hurt) - 1e-12) hurt = a;
+    return hurt;
+  }
+
   /** The party healer's goal. 'smite': nobody needs a heal. undefined: stay put (an ally in Range is being healed, or the ones out of Range
    *  cannot be reached without walking into the foes, so she fights from here: holdForHeal). Otherwise the spot that brings the most
    *  hurt ally into Range, never one inside her retreat distance of a foe (that is what made her shuffle between retreating and approaching). */
   private partyHealerGoal(u: Unit, range: number): { x: number; y: number } | undefined | 'smite' {
     u.holdForHeal = false;
-    const needy = this.allies(u).filter((a) => a.id !== u.id && a.hp / this.maxHp(a) < u.smiteThreshold);
-    if (needy.length === 0) return 'smite';
-    if (needy.some((a) => dist(u, a) <= range)) return undefined;
-    let hurt = needy[0];
-    for (const a of needy) if (a.hp / this.maxHp(a) < hurt.hp / this.maxHp(hurt) - 1e-12) hurt = a;
+    const hurt = this.healPriority(u);
+    if (!hurt) return 'smite';
+    if (dist(u, hurt) <= range) return undefined;
     const foes = this.foes(u);
     const away = CombatSim.away(u, hurt);
     for (const f of [this.cfg.standoffFactor, 0.97]) {   // comfortably inside Range first, then right at its edge
@@ -1533,16 +1542,19 @@ export class CombatSim {
       const alone = this.cfg.lastHealerAttacks && u.enemy && !this.allies(u).some((a) => a.id !== u.id);   // the last enemy: damage beats healing itself
       let hurt = alone ? undefined : this.lowestHpAlly(u, true);
       if (this.cfg.healerSmitesWhenIdle && !u.enemy) {
-        // Heal the most hurt ally who is in Range (an ally out of Range does not stop her healing the others); with none in Range she walks
-        // toward the most hurt one, or, when that is not safe, fights from where she stands.
-        let best: Unit | undefined;
-        for (const a of this.allies(u)) {
-          if (a.hp >= this.maxHp(a) - 1e-9 || a.hp / this.maxHp(a) >= u.smiteThreshold || dist(u, a) > range) continue;
-          if (!best || a.hp / this.maxHp(a) < best.hp / this.maxHp(best) - 1e-12) best = a;
+        // Heal the priority ally (low Tank, else the most hurt) when in Range; when out of Range she walks to them, and only when that is
+        // not safe (holdForHeal) does she heal the most hurt ally in Range instead, or fight from where she stands.
+        const pri = this.healPriority(u);
+        if (pri && dist(u, pri) <= range) hurt = pri;
+        else if (pri && !u.holdForHeal) return;   // on her way to them
+        else {
+          let best: Unit | undefined;
+          for (const a of this.allies(u)) {
+            if (a.hp / this.maxHp(a) >= u.smiteThreshold || dist(u, a) > range) continue;
+            if (!best || a.hp / this.maxHp(a) < best.hp / this.maxHp(best) - 1e-12) best = a;
+          }
+          hurt = best;
         }
-        if (best) hurt = best;
-        else if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold && !u.holdForHeal) return;   // on her way to them
-        else hurt = undefined;
       }
       if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold) {
         if (dist(u, hurt) > range) return; // waiting to get the ally into Range

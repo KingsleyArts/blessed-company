@@ -710,29 +710,31 @@ describe('units: Priest fights', () => {
     CHECK(withP.timeouts === 0 && without.timeouts === 0 && elite2.timeouts === 0 && waved.timeouts === 0);
     CHECK(withP.n === seeds);
   });
-  it('healerSmitesWhenIdle: heals the ally in Range even when the most hurt one is out of Range', () => {
-    const run = (flag: boolean): number => {
+  it('healerSmitesWhenIdle: walks to a more hurt ally out of Range and heals them, unless the Tank is low', () => {
+    const run = (flag: boolean, tankHp: number): { tank: number; far: number } => {
       const cfg = defaultCombatConfig();
       cfg.healerSmitesWhenIdle = flag;
       const s = new CombatSim(data, 1, cfg);
       const p = s.addPartyUnit('Priest');
-      const near = s.addPartyUnit('Warrior');
+      const tank = s.addPartyUnit('Warrior');
       const far = s.addPartyUnit('Mage');
-      Freeze(s, p); Freeze(s, near); Freeze(s, far);
-      Place(s, p, 0, 0); Place(s, near, 300, 0); Place(s, far, -1100, 0);
+      Freeze(s, tank); Freeze(s, far);
+      Place(s, p, 0, 0); Place(s, tank, 300, 0); Place(s, far, -1100, 0);
       const g = s.addEnemy('Grunt', 1);
       Freeze(s, g);
       Place(s, g, 1100, 600);
       s.startFight();
-      s.mutableUnit(near)!.hp = 0.5 * s.maxHp(s.getUnit(near)!);
+      s.mutableUnit(tank)!.hp = tankHp * s.maxHp(s.getUnit(tank)!);
       s.mutableUnit(far)!.hp = 0.1 * s.maxHp(s.getUnit(far)!);
-      let healed = 0;
-      s.getBus().subscribe('HealApplied', (e) => { if (e.source === p && e.target === near) healed++; });
-      StepSeconds(s, 6);
-      return healed;
+      const r = { tank: 0, far: 0 };
+      s.getBus().subscribe('HealApplied', (e) => { if (e.source === p && e.target === tank) r.tank++; if (e.source === p && e.target === far) r.far++; });
+      StepSeconds(s, 8);
+      return r;
     };
-    CHECK(run(false) === 0);   // the old rule waits for the lowest-HP ally and heals nobody
-    CHECK(run(true) > 0);
+    const walk = run(true, 0.5);
+    CHECK(walk.far > 0);   // she walks to the more hurt ally instead of ignoring them
+    const low = run(true, 0.3);
+    CHECK(low.tank > 0);   // a low Tank takes priority
   });
   it('healerSmitesWhenIdle: a cornered Priestess does not shuffle toward a hurt ally she cannot reach safely', () => {
     const run = (flag: boolean): { flips: number; hits: number } => {
