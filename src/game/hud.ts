@@ -2,7 +2,7 @@
 // buttons and the Miracle Gauge, the mini-map with fog, the arrow pad and Teleport, the Essence menu, the portrait strip, the gear toast
 // and (paused, testing builds) the tuning menu. Every rectangle comes from hudLayout.ts; clicks hit-test the same rectangles.
 import Phaser from 'phaser';
-import { CastKind, type CombatSim, type Unit } from '../core/combatSim';
+import { CastKind, defaultCombatConfig, type CombatSim, type Unit } from '../core/combatSim';
 import { RoomType } from '../core/floorGenerator';
 import { MiracleKind, MiracleResult, miracleName, miracleTargetsEnemy } from '../core/miracleGauge';
 import type { FloorSnapshot, RunManager, SidebarSnapshot } from '../core/runManager';
@@ -30,7 +30,7 @@ interface TuneDef { id: string; name: string; step: number; min: number; max: nu
 /** [class, basic attack name] for every hero (heroSheet kHeroOrder); the unit names the sim keys its multipliers by. */
 const kTuneHeroes: [string, string][] = [['Warrior', 'Sword Strike'], ['Mage', 'Arcane Shot'], ['Assassin', 'Twin Blades'], ['Priest', 'Searing Light'],
   ['Barbarian', 'Axe Swing'], ['Summoner', 'Spirit Bolt']];
-const kCastBound = ['Mage', 'Priest'];
+const kCastBound = ['Mage', 'Priest', 'Summoner'];
 /** [AbilityData id, shown name] for every hero ability. Power scales its damage, heal or buff strength (Greater Spirit: its healing). */
 const kTuneAbilities: [string, string][] = [['SpiritHeal', 'Spirit healing (standard spirit)'], ['Taunt', 'Taunt'], ['Cleave', 'Cleave'], ['Fireball', 'Fireball'], ['Execute', 'Execute'],
   ['GroupHeal', 'Prayer of Mending'], ['Rage', 'Rage'], ['Bloodrush', 'Bloodrush'], ['GreaterSpirit', 'Greater Spirit']];
@@ -56,6 +56,9 @@ const kTune: TuneDef[] = [
   { id: 'show:rings', name: 'Rings under feet (gold party, red enemies)', step: 1, min: 0, max: 1, tab: 3 },
   // Appended last: tunePush reads the first rows by position. Searing Light heals while the most hurt ally is below this share of max HP.
   { id: 'smiteThreshold', name: 'Searing Light heals below (ally HP share; above it, it smites)', step: 0.05, min: 0, max: 1, tab: 0 },
+  // Enemy growth per floor, health and damage apart (director Nov 22): each floor multiplies by this (shipped 1.25 for both).
+  { id: 'floorHealth', name: 'Enemy health growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1 },
+  { id: 'floorDamage', name: 'Enemy damage growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1 },
   // Heroes' basic attack / heal (tab 4) and abilities (tab 5). Adding a hero or an ability: add it to these two lists so it is tunable.
   ...kTuneHeroes.flatMap(([cls, attack]) => [
     { id: `atkPower:${cls}`, name: `${heroLabel(cls)} ${attack} power x`, step: 0.05, min: 0.1, max: 4, tab: 4 },
@@ -833,6 +836,8 @@ export class Hud {
     if (!sim) return;
     const c = sim.mutableConfig();
     c.enemyStatMult = this.tuneValue[0];
+    c.floorHealthScaling = this.tuneValue[tuneRow('floorHealth')];
+    c.floorDamageScaling = this.tuneValue[tuneRow('floorDamage')];
     c.castTimeScale = this.tuneValue[1];
     c.partyHealMult = this.tuneValue[2];
     const base = defaultMiracle;
@@ -859,6 +864,8 @@ export class Hud {
     return kTune.map((d) => {
       switch (d.id) {
         case 'enemyMult': return this.rm.opts.enemyMult;
+        case 'floorHealth':
+        case 'floorDamage': return defaultCombatConfig().floorScaling;
         case 'gaugeFill': return defaultMiracle.fillPerHit;
         case 'smiteRadius': return defaultMiracle.smiteRadius;
         case 'smiteThreshold': return 0.85; // CombatConfig smiteThreshold / the Priest's ClassData SmiteThreshold

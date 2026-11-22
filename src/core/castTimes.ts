@@ -12,9 +12,11 @@ export function installShippedCastTimes(cfg: CombatConfig): void {
   // the cast time is the only limit; AttackSpeed shortens it. DRAFT cast times in seconds at the class's base AttackSpeed; each
   // landing is scaled by cast time x base AttackSpeed (Mage 2.0 x 0.7 = 1.4x damage, Priestess 1.6 x 0.8 = 1.28x damage and heal),
   // so DPS and healing per second stay what ClassData says and only the chunkiness changes.
-  cfg.autoCastTimes = new Map([['Mage', 2.0], ['Priest', 1.6]]);
+  cfg.autoCastTimes = new Map([['Mage', 2.0], ['Priest', 1.6], ['Summoner', 1.5]]);
+  // Spirit Bolt (director Nov 22) casts like Arcane Shot. DRAFT 1.5 s x base AttackSpeed 0.9 = 1.35x of the Summoner's lower Damage 8
+  // (about 10.8 per bolt, 7.2 per second against the Mage's 22.4 and 11.2), since the Summoner is a healer.
   // Arcane Shot and Searing Light's smite fly to the target (DRAFT speed, world units per second); Searing Light's heal lands instantly.
-  cfg.projectileUnits = ['Mage', 'Priest'];
+  cfg.projectileUnits = ['Mage', 'Priest', 'Summoner'];
   cfg.projectileSpeed = 1400.0;
   // Abilities, by ability name. Taunt, Rage and GroupHeal stay instant: Taunt and Rage are buffs (the tank must hold aggro on time),
   // and GroupHeal fires in the gap between a caster's auto casts (an ability never starts during another cast).

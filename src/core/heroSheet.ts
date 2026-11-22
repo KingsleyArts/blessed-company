@@ -67,7 +67,7 @@ const kSkillText: Record<string, [string, string]> = {
   HealOrSmite: ['Searing Light', 'A cast that heals the most hurt ally the moment it finishes, or sends a bolt of light at an enemy when no one needs healing.'],
   FastMelee: ['Twin Blades', 'Quick melee attacks.'],
   MeleeSwing: ['Axe Swing', 'A strong melee attack that draws enemy attention.'],
-  SpiritBolt: ['Spirit Bolt', "A ranged bolt of spirit energy. Meanwhile the Summoner's spirit heals the most hurt ally."],
+  SpiritBolt: ['Spirit Bolt', "A ranged bolt of spirit energy: the cast takes a moment, then the green bolt flies to the target. Meanwhile the Summoner's spirit heals the most hurt ally."],
   RangedBolt: ['Arcane Shot', 'A ranged magic attack: the cast takes a moment, then the bolt flies to the target.'],
   Taunt: ['Taunt', 'Puts the Warrior at the top of every enemy\'s threat and forces them all to attack the Warrior for a few seconds, taking less damage meanwhile.'],
   Cleave: ['Cleave', 'Hits every enemy close by, holding their attention.'],

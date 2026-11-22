@@ -26,6 +26,9 @@ export interface CombatConfig {
   runawayGuardSeconds: number;
   enemyStatMult: number;
   floorScaling: number;
+  /** Per-floor growth of enemy Health / Damage; a negative value means "same as floorScaling" (director Nov 22: tunable separately). */
+  floorHealthScaling: number;
+  floorDamageScaling: number;
   arenaW: number;
   arenaH: number;
   separation: number;
@@ -110,6 +113,8 @@ export function defaultCombatConfig(): CombatConfig {
     runawayGuardSeconds: 1800.0,
     enemyStatMult: 1.0,
     floorScaling: 1.25,
+    floorHealthScaling: -1.0,
+    floorDamageScaling: -1.0,
     arenaW: 2400.0,
     arenaH: 1400.0,
     separation: 100.0,
@@ -462,9 +467,13 @@ export class CombatSim {
     u.stats.setBase(StatId.AttackSpeed, row.BaseStats.AttackPerSec);
     u.stats.setBase(StatId.DefensePercent, row.BaseStats.DefensePct);
     u.stats.setBase(StatId.Range, row.AttackRange);
-    const scale = this.cfg.enemyStatMult * Math.pow(this.cfg.floorScaling, Math.max(0, floorNumber - 1));
+    const floors = Math.max(0, floorNumber - 1);
+    const hpGrowth = this.cfg.floorHealthScaling >= 0.0 ? this.cfg.floorHealthScaling : this.cfg.floorScaling;
+    const dmgGrowth = this.cfg.floorDamageScaling >= 0.0 ? this.cfg.floorDamageScaling : this.cfg.floorScaling;
+    const hpScale = this.cfg.enemyStatMult * Math.pow(hpGrowth, floors);
+    const scale = this.cfg.enemyStatMult * Math.pow(dmgGrowth, floors); // damage (and enemy heal) scale
     if (floorNumber > 1 || this.cfg.enemyStatMult !== 1.0) {
-      u.stats.addModifier(StatId.Health, ModKind.Multiplier, scale, ModSource.FloorScaling);
+      u.stats.addModifier(StatId.Health, ModKind.Multiplier, hpScale, ModSource.FloorScaling);
       u.stats.addModifier(StatId.Damage, ModKind.Multiplier, scale, ModSource.FloorScaling);
     }
     u.moveSpeed = row.MoveSpeed;
@@ -1472,10 +1481,30 @@ export class CombatSim {
     const interval = 1.0 / u.stats.get(StatId.AttackSpeed);
     if (u.attackTimer < interval - 1e-9) return;
     const hurt = this.lowestHpAlly(owner, true);
-    if (!hurt || dist(owner, hurt) > owner.stats.get(StatId.Range)) return;
+    if (!hurt || hurt.hp / this.maxHp(hurt) >= owner.smiteThreshold) { this.spiritSmite(u, owner, interval); return; } // nobody needs healing: like the Priest, smite
+    if (dist(owner, hurt) > owner.stats.get(StatId.Range)) return;
     u.attackTimer -= interval;
     const scale = (u.greater ? this.cfg.greaterSpiritHealScale * this.abilityPower('GreaterSpirit') : this.cfg.spiritHealScale * this.abilityPower('SpiritHeal'));
     this.applyHeal(owner.id, hurt.id, kHealBase * scale + Math.max(0.0, owner.stats.get(StatId.SpiritDamage)));
+  }
+
+  /** A healing spirit with everyone at or above the Summoner's smite threshold (85%) strikes her target instead (else the closest enemy in her
+   *  Range), once per pulse, for the spirit's own Damage. Credit and threat go to the Summoner like the heal. */
+  private spiritSmite(u: Unit, owner: Unit, interval: number): void {
+    const range = owner.stats.get(StatId.Range);
+    let tgt = this.getUnit(owner.target);
+    if (!tgt || !tgt.alive || tgt.removed || !tgt.enemy || dist(owner, tgt) > range) {
+      const reach = this.foes(owner).filter((f) => !f.removed && dist(owner, f) <= range);
+      tgt = reach.length ? this.closestOf(owner, reach) : undefined;
+    }
+    if (!tgt) return;
+    u.attackTimer -= interval;
+    this.launchAuto(u, tgt.id, this.autoPower(owner), DamageTag.Auto | DamageTag.Summon | DamageTag.Smite);
+  }
+
+  /** True when any living hero (the Summoner herself included) is below the smite threshold, i.e. a heal is worth casting. */
+  private someoneNeedsHealing(u: Unit): boolean {
+    return this.units.some((o) => !o.enemy && !o.summon && o.alive && o.hp / this.maxHp(o) < u.smiteThreshold);
   }
 
   /** Bloodrush's target: the enemy closest to the Barbarian that is attacking a vulnerable ally (a ranged or back-line hero), else his normal
@@ -1758,6 +1787,7 @@ export class CombatSim {
     if (!force) {
       if (this.getTimer(u, slot) < this.cooldownOf(abilityId) - 1e-9) return false;
       if (!this.triggerAllows(u)) return false;
+      if (abilityId === 'GreaterSpirit' && u.spiritHeals && !this.someoneNeedsHealing(u)) return false; // a healing spirit is only worth calling when someone is hurt
     }
     const effects = this.sortedEffects(abilityId);
     if (effects.length === 0) return false;
@@ -1785,6 +1815,7 @@ export class CombatSim {
     const effects = this.sortedEffects(u.castAbility);
     if (effects.length === 0 || !ab) return;
     this.forcingCast = false;
+    if (u.castAbility === 'GreaterSpirit' && u.spiritHeals && !this.someoneNeedsHealing(u)) { this.setTimer(u, u.castSlot, this.cooldownOf(u.castAbility)); return; } // everyone healed meanwhile: fizzles, refunded
     if (this.effectTargets(u, effects[0]).length === 0) { this.setTimer(u, u.castSlot, this.cooldownOf(u.castAbility)); return; }
     this.bus.raise('AbilityCast', { caster: u.id, abilityId: ab.Name });
     for (const eff of effects) this.applyEffect(u, eff);
@@ -1929,6 +1960,10 @@ export class CombatSim {
     if (!o || !o.alive) return;
     if (s.spiritHeals) { // a healing spirit moves by itself (moveHealSpirit); only the pulse rate follows the Summoner
       s.stats.setBase(StatId.AttackSpeed, this.speedOf(o));
+      // The smite it throws when nobody needs healing: the spirit's own Damage (CombatConfig spiritDamage, DRAFT 5) plus Spirit Damage.
+      s.stats.setBase(StatId.Damage, this.cfg.spiritDamage + Math.max(0.0, o.stats.get(StatId.SpiritDamage)));
+      s.stats.setBase(StatId.CritChance, o.stats.get(StatId.CritChance));
+      s.stats.setBase(StatId.CritFactor, o.stats.get(StatId.CritFactor));
       return;
     }
     s.stats.setBase(StatId.Damage, (o.stats.get(StatId.Damage) + Math.max(0.0, o.stats.get(StatId.SpiritDamage))) * this.autoPower(o));

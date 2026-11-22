@@ -334,7 +334,7 @@ export class UnitView {
     else img.setTint(pose.tint);
   }
 
-  /** Autos in flight: Arcane Shot (violet) and Searing Light's smite (gold), a bright core in a soft glow with a short trail. */
+  /** Autos in flight: Arcane Shot (violet), Searing Light's smite (gold) and Spirit Bolt (green), a bright core in a soft glow with a short trail. */
   private drawProjectiles(sim: CombatSim, scale: number): void {
     const g = this.overlay;
     const off = this.rm.isStaged() ? this.room.stagedOffset() : { x: 0, y: 0 };
@@ -342,8 +342,8 @@ export class UnitView {
       const src = sim.getUnit(p.source);
       const tgt = sim.getUnit(p.target);
       if (!src || !tgt) continue;
-      const holy = src.name === 'Priest';
-      const glow = holy ? 0xffd86b : 0x9d6bff, core = holy ? 0xfff7d6 : 0xe6d6ff;
+      const holy = src.name === 'Priest', spirit = src.name === 'Summoner';
+      const glow = holy ? 0xffd86b : spirit ? 0x4fe08a : 0x9d6bff, core = holy ? 0xfff7d6 : spirit ? 0xdcffe9 : 0xe6d6ff;
       const here = this.room.project(p.x + off.x, p.y + off.y, 100);
       if (here.depth <= 0) continue;
       // The trail points back toward the caster.
