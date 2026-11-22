@@ -50,7 +50,7 @@ export class RunScene extends Phaser.Scene {
     this.store = new SlotStore();
     this.store.migrateLegacy();
     if (this.params.reset) for (let i = 0; i < kSlotCount; ++i) this.store.erase(i);
-    this.rm = new RunManager(data, this.store, makeRunManagerOptions({ enemyMult: this.params.enemyMult, castTimes: this.params.castTimes, priestFromStart: true }));
+    this.rm = new RunManager(data, this.store, makeRunManagerOptions({ enemyMult: this.params.enemyMult, castTimes: this.params.castTimes, priestFromStart: true, gearChoice: true }));
     if (this.params.testing) this.rm.setFloorSize(loadFloorSize());
     this.room = new RoomView(this.rm);
     this.rm.setTransitionHook(this.room);

@@ -11,7 +11,8 @@ export class Rect {
 
 export const kMaxPortraits = 6;
 
-export interface PortraitSlot { portrait: Rect; cooldown: Rect; hp: Rect; hpText: Rect }
+/** One party slot: the face, two ability tiles stacked to its right (primary above, second below), then the health bar and text under both. */
+export interface PortraitSlot { portrait: Rect; abilities: [Rect, Rect]; whole: Rect; hp: Rect; hpText: Rect }
 
 export interface Layout {
   topBar: Rect;
@@ -50,27 +51,30 @@ export function computeLayout(w: number, h: number, partyCount: number): Layout 
   const gauge = new Rect(smiteBtn.right() + bgap * 2, by + bh * 0.3, bh * 3.4, bh * 0.4);
 
   const barGap = 0.004 * h;
-  const cdH = 0.012 * h;
   const hpH = 0.014 * h;
   const textH = 0.02 * h;
   const margin = 0.012 * h;
-  const chrome = cdH + barGap + barGap + hpH + barGap + textH + margin;
+  const chrome = barGap + hpH + barGap + textH + margin;
   let p = 0.105 * h;
   const n = Math.max(1, slotCount);
-  p = Math.min(p, (0.68 * w) / (n * 1.15));
+  p = Math.min(p, (0.68 * w) / (n * 1.67));
+  const iGap = 0.06 * p;
+  const iw = (p - iGap) / 2;   // two square ability tiles fill the face's height
+  const sw = p + iGap + iw;
   const sgap = 0.15 * p;
   const stripTop = h - chrome - p;
   const x0 = 0.012 * w;
   const slots: PortraitSlot[] = [];
   for (let i = 0; i < slotCount; ++i) {
-    const x = x0 + i * (p + sgap);
-    const portrait = new Rect(x, stripTop + cdH + barGap, p, p);
-    const cooldown = new Rect(x, stripTop, p, cdH);
-    const hp = new Rect(x, portrait.bottom() + barGap, p, hpH);
-    const hpText = new Rect(x, hp.bottom() + barGap, p, textH);
-    slots.push({ portrait, cooldown, hp, hpText });
+    const x = x0 + i * (sw + sgap);
+    const portrait = new Rect(x, stripTop, p, p);
+    const ax = portrait.right() + iGap;
+    const abilities: [Rect, Rect] = [new Rect(ax, stripTop, iw, iw), new Rect(ax, stripTop + iw + iGap, iw, iw)];
+    const hp = new Rect(x, portrait.bottom() + barGap, sw, hpH);
+    const hpText = new Rect(x, hp.bottom() + barGap, sw, textH);
+    slots.push({ portrait, abilities, whole: new Rect(x, stripTop, sw, hp.bottom() - stripTop), hp, hpText });
   }
-  const portraitStrip = new Rect(x0, stripTop, slotCount > 0 ? slotCount * (p + sgap) - sgap : 0, h - margin - stripTop);
+  const portraitStrip = new Rect(x0, stripTop, slotCount > 0 ? slotCount * (sw + sgap) - sgap : 0, h - margin - stripTop);
   const roomTop = by + bh + 0.01 * h;
   const roomBottom = h - (chrome + 0.105 * h);
   const roomArea = new Rect(0.005 * w, roomTop, colX - 0.01 * w, roomBottom - roomTop);
@@ -81,7 +85,7 @@ export function computeLayout(w: number, h: number, partyCount: number): Layout 
 export function portraitAt(L: Layout, px: number, py: number): number {
   for (let i = 0; i < L.slotCount; ++i) {
     const s = L.slots[i];
-    if (new Rect(s.cooldown.x, s.cooldown.y, s.portrait.w, s.hp.bottom() - s.cooldown.y).contains(px, py)) return i;
+    if (s.whole.contains(px, py)) return i;
   }
   return -1;
 }

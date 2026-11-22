@@ -682,15 +682,20 @@ export class CombatSim {
   getUnits(): readonly Unit[] { return this.units; }
   /** Autos in flight (drawn by the scene); empty once the fight is over. */
   getProjectiles(): readonly Projectile[] { return this.projectiles; }
-  primaryAbilityCooldown(id: UnitId): AbilityCooldown {
+  primaryAbilityCooldown(id: UnitId): AbilityCooldown { return this.abilityCooldown(id, 0); }
+  /** The cooldown of ability slot 0 (the primary) or 1.. (the extra abilities, in ClassData order); invalid when the unit has no such slot. */
+  abilityCooldown(id: UnitId, slot: number): AbilityCooldown {
     const c: AbilityCooldown = { remaining: 0, total: 0, valid: false };
     const u = this.getUnit(id);
-    if (!u || u.abilityId === '') return c;
-    const ab = this.data.findAbility(u.abilityId);
+    if (!u) return c;
+    const abilityId = slot === 0 ? u.abilityId : u.extraAbilities[slot - 1]?.id ?? '';
+    const timer = slot === 0 ? u.abilityTimer : u.extraAbilities[slot - 1]?.timer ?? 0;
+    if (abilityId === '') return c;
+    const ab = this.data.findAbility(abilityId);
     if (!ab || !(ab.Cooldown > 0)) return c;
     c.valid = true;
-    c.total = this.cooldownOf(u.abilityId);
-    c.remaining = Math.max(0.0, c.total - u.abilityTimer);
+    c.total = this.cooldownOf(abilityId);
+    c.remaining = Math.max(0.0, c.total - timer);
     return c;
   }
   getUnit(id: UnitId): Unit | undefined {
