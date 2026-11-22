@@ -9,9 +9,10 @@
 //   * the saved meta through a MetaStore (the browser keeps it in localStorage); the Temple and the party picker between runs
 import { installShippedCastTimes } from './castTimes';
 import type { CombatData } from './combatData';
-import { CombatSim, FightState, defaultCombatConfig, type CombatConfig, type Unit } from './combatSim';
+import { CombatSim, FightState, defaultCombatConfig, kHealBase, type CombatConfig, type Unit } from './combatSim';
 import { kNoUnit, type UnitId } from './eventBus';
 import { applyEssenceToSim, kEssenceAppliesToRunningFight } from './essenceApply';
+import { StatId } from './statResolver';
 import { shippedEssenceConfig, type EssenceStatDef } from './essenceConfig';
 import { normalizeFloorSize, type FloorSize } from './floorGenerator';
 import { BuyRefusal, type BuyResult } from './essenceSidebar';
@@ -42,6 +43,15 @@ export enum RunChange {
 }
 
 /** Where the saved meta lives (FTolMetaStore). */
+/** [AbilityData id, owner hero] of every hero ability the testing menu tunes. */
+export const kTuneAbilityOwners: [string, string][] = [['SpiritHeal', 'Summoner'], ['Taunt', 'Warrior'], ['Cleave', 'Warrior'], ['Fireball', 'Mage'], ['Execute', 'Assassin'],
+  ['GroupHeal', 'Priest'], ['Rage', 'Barbarian'], ['Bloodrush', 'Barbarian'], ['GreaterSpirit', 'Summoner']];
+/** See RunManager.tuneBases. */
+export interface TuneBases {
+  heroes: Record<string, { rawDamage: number; damage: number; swing: number; cast: number; heal: number }>;
+  abilities: Record<string, { cooldown: number; cast: number; power: number }>;
+}
+
 export interface MetaStore {
   /** The saved text, or undefined when there is none. */
   load(): string | undefined;
@@ -382,6 +392,41 @@ export class RunManager {
     cfg.healerSmitesWhenIdle = true;   // a Priest with nobody to heal closes in and casts Searing Light
     cfg.greaterSpiritPersists = true;   // a Greater Spirit waits out the gap between fights
     return cfg;
+  }
+
+  /** The shipped numbers behind the testing menu's absolute rows, from a scratch sim at each class's base stats (no gear, essence or blessings,
+   *  before enemy defense): per hero its auto damage, swing or cast seconds and heal amount; per ability its cooldown, cast seconds and strength
+   *  (damage per target, heal per ally, Rage's attack-speed bonus, Taunt's threat bonus, a spirit's heal). */
+  tuneBases(): TuneBases {
+    const cfg = this.combatConfig();
+    const sim = new CombatSim(this.data, 1, cfg);
+    const heroes: TuneBases['heroes'] = {};
+    for (const cls of kHeroOrder) {
+      const u = sim.getUnit(sim.addPartyUnit(cls));
+      if (!u) continue;
+      const damage = u.stats.get(StatId.Damage), as = Math.max(1e-6, u.stats.get(StatId.AttackSpeed));
+      const cast = cfg.castTimeScale > 0 ? cfg.autoCastTimes.get(cls) ?? 0 : 0;   // > 0: cast-bound, no swing timer
+      const power = cast > 0 ? cast * as : 1;   // a longer cast hits (and heals) harder, so DPS stays what ClassData says
+      heroes[cls] = { rawDamage: damage, damage: damage * power, swing: cast > 0 ? cast : 1 / as, cast, heal: kHealBase * u.autoHealScale * u.healFloorMult * power };
+    }
+    const abilities: TuneBases['abilities'] = {};
+    for (const [id, owner] of kTuneAbilityOwners) {
+      const ownerDamage = heroes[owner]?.rawDamage ?? 0;
+      const fx = this.data.effects.filter((e) => e.AbilityId === id).sort((a, b) => a.Order - b.Order);
+      const dmg = fx.find((e) => e.Type === 'Damage' || e.Type === 'Rush');
+      const heal = fx.find((e) => e.Type === 'Heal');
+      const rage = fx.find((e) => e.Stat === 'AttackSpeed');
+      const taunt = fx.find((e) => e.Type === 'AddThreat');
+      let power = 0;
+      if (dmg) power = dmg.Value * ownerDamage;
+      else if (heal) power = heal.Value * kHealBase;
+      else if (rage) power = rage.Value;
+      else if (taunt) power = taunt.Value;
+      else if (id === 'SpiritHeal') power = cfg.spiritHealScale * kHealBase;
+      else if (id === 'GreaterSpirit') power = cfg.greaterSpiritHealScale * kHealBase;
+      abilities[id] = { cooldown: this.data.findAbility(id)?.Cooldown ?? 0, cast: cfg.abilityCastTimes.get(id) ?? 0, power };
+    }
+    return { heroes, abilities };
   }
 
   private setPartyEntry(door: number): void {
