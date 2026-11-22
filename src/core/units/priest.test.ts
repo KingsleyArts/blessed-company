@@ -5,7 +5,8 @@ import { Behavior, CombatSim, FightState, defaultCombatConfig, kHealBase, runFig
 import { CombatData } from '../combatData';
 import { DamageTag, kNoUnit, type DamageDealt, type UnitId } from '../eventBus';
 import { ModKind, ModSource, StatId } from '../statResolver';
-import { CHECK, NEAR, pinnedData } from '../combatTestKit';
+import { CHECK, NEAR, StepSeconds, pinnedData } from '../combatTestKit';
+import { installShippedCastTimes } from '../castTimes';
 
 const data = pinnedData;
 const Cls = (n: string) => data.findClassRow(n)!;
@@ -708,5 +709,61 @@ describe('units: Priest fights', () => {
     const waved = runPack(['Warrior', 'Priest', 'Mage'], pack, 2, seeds, [{ atSeconds: 12, enemies: ['Grunt', 'Archer'], floorNumber: 2 }]);
     CHECK(withP.timeouts === 0 && without.timeouts === 0 && elite2.timeouts === 0 && waved.timeouts === 0);
     CHECK(withP.n === seeds);
+  });
+  it('healerSmitesWhenIdle: heals the ally in Range even when the most hurt one is out of Range', () => {
+    const run = (flag: boolean): number => {
+      const cfg = defaultCombatConfig();
+      cfg.healerSmitesWhenIdle = flag;
+      const s = new CombatSim(data, 1, cfg);
+      const p = s.addPartyUnit('Priest');
+      const near = s.addPartyUnit('Warrior');
+      const far = s.addPartyUnit('Mage');
+      Freeze(s, p); Freeze(s, near); Freeze(s, far);
+      Place(s, p, 0, 0); Place(s, near, 300, 0); Place(s, far, -1100, 0);
+      const g = s.addEnemy('Grunt', 1);
+      Freeze(s, g);
+      Place(s, g, 1100, 600);
+      s.startFight();
+      s.mutableUnit(near)!.hp = 0.5 * s.maxHp(s.getUnit(near)!);
+      s.mutableUnit(far)!.hp = 0.1 * s.maxHp(s.getUnit(far)!);
+      let healed = 0;
+      s.getBus().subscribe('HealApplied', (e) => { if (e.source === p && e.target === near) healed++; });
+      StepSeconds(s, 6);
+      return healed;
+    };
+    CHECK(run(false) === 0);   // the old rule waits for the lowest-HP ally and heals nobody
+    CHECK(run(true) > 0);
+  });
+  it('healerSmitesWhenIdle: a cornered Priestess does not shuffle toward a hurt ally she cannot reach safely', () => {
+    const run = (flag: boolean): { flips: number; hits: number } => {
+      const cfg = defaultCombatConfig();
+      installShippedCastTimes(cfg);
+      cfg.healerSmitesWhenIdle = flag;
+      const s = new CombatSim(data, 1, cfg);
+      const p = s.addPartyUnit('Priest');
+      const w = s.addPartyUnit('Warrior');
+      Freeze(s, w);
+      Place(s, p, -1190, 0);
+      Place(s, w, -150, 0);
+      const g = s.addEnemy('Grunt', 1);
+      Freeze(s, g);
+      Place(s, g, -720, 0);   // between them, inside her retreat distance
+      s.startFight();
+      s.mutableUnit(w)!.hp = 0.3 * s.maxHp(s.getUnit(w)!);
+      let hits = 0;
+      s.getBus().subscribe('DamageDealt', (e) => { if (e.source === p) hits++; });
+      let lastX = s.getUnit(p)!.x, dir = 0, flips = 0;
+      for (let t = 0; t < 30 * 12; ++t) {
+        s.step();
+        const x = s.getUnit(p)!.x, d = Math.abs(x - lastX) < 0.01 ? 0 : Math.sign(x - lastX);
+        if (d !== 0) { if (dir !== 0 && d !== dir) ++flips; dir = d; }
+        lastX = x;
+      }
+      return { flips, hits };
+    };
+    const off = run(false), on = run(true);
+    CHECK(on.flips <= 2);
+    CHECK(off.flips > 10 && off.hits === 0);   // the old rule paced back and forth and never cast
+    CHECK(on.hits > 0);   // she fights from where she stands
   });
 });
