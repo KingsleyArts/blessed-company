@@ -318,8 +318,30 @@ export class UnitView {
     else img.setTint(pose.tint);
   }
 
+  /** Autos in flight: Arcane Shot (violet) and Searing Light's smite (gold), a bright core in a soft glow with a short trail. */
+  private drawProjectiles(sim: CombatSim, scale: number): void {
+    const g = this.overlay;
+    const off = this.rm.isStaged() ? this.room.stagedOffset() : { x: 0, y: 0 };
+    for (const p of sim.getProjectiles()) {
+      const src = sim.getUnit(p.source);
+      const tgt = sim.getUnit(p.target);
+      if (!src || !tgt) continue;
+      const holy = src.name === 'Priest';
+      const glow = holy ? 0xffd86b : 0x9d6bff, core = holy ? 0xfff7d6 : 0xe6d6ff;
+      const here = this.room.project(p.x + off.x, p.y + off.y, 100);
+      if (here.depth <= 0) continue;
+      // The trail points back toward the caster.
+      const dx = src.x - p.x, dy = src.y - p.y, d = Math.hypot(dx, dy) || 1;
+      const tail = this.room.project(p.x + off.x + (dx / d) * 90, p.y + off.y + (dy / d) * 90, 100);
+      g.lineStyle(Math.max(2, 5 * scale), glow, 0.35).lineBetween(tail.x, tail.y, here.x, here.y);
+      g.fillStyle(glow, 0.35).fillCircle(here.x, here.y, 13 * scale);
+      g.fillStyle(core, 1).fillCircle(here.x, here.y, 6 * scale);
+    }
+  }
+
   private drawOverlays(sim: CombatSim, scale: number): void {
     const g = this.overlay;
+    this.drawProjectiles(sim, scale);
     // Fewer bars also draws them smaller.
     const thin = readability.fewerBars;
     const barW = kBarWidthPx * scale * (thin ? 0.75 : 1);

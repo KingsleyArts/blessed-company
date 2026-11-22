@@ -14,10 +14,12 @@ const floors = (rs: AutoRunRecord[]): string => {
 };
 
 describe('autoRun soak bot', () => {
+  // Soak pins re-recorded Nov 21 after the caster rework (cast-bound Mage and Priestess, projectiles): was F1 x17 F2 x21 F3 x2 and
+  // F1 x2 F2 x5 F3 x1 F4 x8 F5 x6 F6 x8 F7 x5 F8 x4 F9 x1 (mean floor 1.63 / 5.03, now 1.48 / 5.18).
   it('nobuy_40_runs_floor_1_usually_fails', () => {
     const rs = new AutoRunSession(data, makeAutoRunParams({ maxRuns: 40, noBuy: true })).runAll();
     expect(rs.length).toBe(40);
-    expect(floors(rs)).toBe('F1 x17 F2 x21 F3 x2');
+    expect(floors(rs)).toBe('F1 x23 F2 x15 F3 x2');
     for (const r of rs) expect(r.results.outcome).toBe(RunOutcome.Wiped);
     expect(rs.map((r) => r.seed)).toEqual(Array.from({ length: 40 }, (_, i) => i + 1));
   });
@@ -53,7 +55,7 @@ describe('autoRun soak bot', () => {
 
   it('temple_soak_climbs', () => {
     const rs = new AutoRunSession(data, makeAutoRunParams({ maxRuns: 40, temple: true })).runAll();
-    expect(floors(rs)).toBe('F1 x2 F2 x5 F3 x1 F4 x8 F5 x6 F6 x8 F7 x5 F8 x4 F9 x1');
+    expect(floors(rs)).toBe('F1 x4 F2 x3 F3 x1 F4 x5 F5 x5 F6 x13 F7 x3 F8 x4 F9 x2');
     expect(rs.findIndex((r) => r.results.floorReached >= 3) + 1).toBe(7);
   });
 });

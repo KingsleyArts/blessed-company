@@ -53,6 +53,20 @@ export interface CombatConfig {
   /** Seconds from commit to landing, keyed by unit name (auto action) or ability name. Missing key = instant. */
   autoWindups: Map<string, number>;
   abilityCastTimes: Map<string, number>;
+  /** Cast-bound casters (director, Nov 21): unit name -> base cast time in seconds at the class's base AttackSpeed. A listed unit has NO
+   *  attack timer: it casts back to back, the cast time is its only limit, AttackSpeed shortens it (base x baseAS / AttackSpeed), and each
+   *  landing is scaled by base x baseAS so the class's DPS stays what ClassData says. castTimeScale 0 falls back to the timer. */
+  autoCastTimes: Map<string, number>;
+  /** Unit names whose auto lands as a projectile that flies to the target (see projectileSpeed). */
+  projectileUnits: string[];
+  /** World units per second; 0 = no flight time (the hit lands as the cast ends). */
+  projectileSpeed: number;
+  /** Testing-menu multipliers (default empty = x1): by unit name for the basic attack / heal's power and its speed, by ability name for the
+   *  ability's power (damage, heal, buff strength, greater spirit damage) and its cooldown length. */
+  autoPowerMult: Map<string, number>;
+  autoSpeedMult: Map<string, number>;
+  abilityPowerMult: Map<string, number>;
+  abilityCooldownMult: Map<string, number>;
   eliteWindupFactor: number;
   tankMeleeFirstRange: number;
   castTimeScale: number;
@@ -113,6 +127,13 @@ export function defaultCombatConfig(): CombatConfig {
     miracle: defaultMiracleConfig(),
     autoWindups: new Map(),
     abilityCastTimes: new Map(),
+    autoCastTimes: new Map(),
+    projectileUnits: [],
+    projectileSpeed: 0.0,
+    autoPowerMult: new Map(),
+    autoSpeedMult: new Map(),
+    abilityPowerMult: new Map(),
+    abilityCooldownMult: new Map(),
     eliteWindupFactor: 1.5,
     tankMeleeFirstRange: 300.0,
     castTimeScale: 1.0,
@@ -146,6 +167,12 @@ export function cloneCombatConfig(c: CombatConfig): CombatConfig {
     miracle: { ...c.miracle },
     autoWindups: new Map(c.autoWindups),
     abilityCastTimes: new Map(c.abilityCastTimes),
+    autoCastTimes: new Map(c.autoCastTimes),
+    projectileUnits: [...c.projectileUnits],
+    autoPowerMult: new Map(c.autoPowerMult),
+    autoSpeedMult: new Map(c.autoSpeedMult),
+    abilityPowerMult: new Map(c.abilityPowerMult),
+    abilityCooldownMult: new Map(c.abilityCooldownMult),
     readyAtStartAbilities: [...c.readyAtStartAbilities],
   };
 }
@@ -158,6 +185,9 @@ export enum Behavior { Frontline, Melee, Caster, Backline }
 export enum CastKind { None, Auto, AutoHeal, Ability }
 
 export interface ExtraAbility { id: string; timer: number }
+/** A caster's auto in flight (the Mage's Arcane Shot): it homes on its target and lands the hit on arrival; a target that dies first
+ *  takes the bolt with it (no damage). Not part of the golden fixtures: with projectileSpeed 0 none is ever made. */
+export interface Projectile { id: number; source: UnitId; target: UnitId; x: number; y: number; scale: number; tags: number }
 interface BuffRef { source: UnitId; stat: StatId; id: ModifierId }
 
 export class Unit {
@@ -210,6 +240,8 @@ export class Unit {
   castTarget: UnitId = kNoUnit;
   castTags = 0;
   castHeal = 0;
+  /** Power of the auto cast in progress (1 for everyone but a cast-bound caster). */
+  castScale = 1;
   castAbility = '';
   castSlot = -1;
   extraAbilities: ExtraAbility[] = [];
@@ -276,6 +308,8 @@ export class CombatSim {
   private units: Unit[] = [];
   private waves: WaveSpec[] = [];
   private warnedEffects: string[] = [];
+  private projectiles: Projectile[] = [];
+  private nextProjectileId = 1;
   private pendingLifesteal: PendingLifesteal[] = [];
   private forcingCast = false;
   private partyCount = 0;
@@ -511,11 +545,18 @@ export class CombatSim {
       this.updateMovement(u);
       if (u.castKind !== CastKind.None) {
         this.advanceCast(u);
+        // A cast-bound caster has no swing timer to wait on: the next cast (or a ready ability, which gets the gap first) starts on the
+        // very tick the last one lands, so the cast time really is the whole cycle.
+        if (u.alive && (u.castKind as CastKind) === CastKind.None && this.autoCastBase(u) > 0.0) {
+          this.tryAbility(u);
+          if (u.alive && (u.castKind as CastKind) === CastKind.None) this.tryAuto(u);
+        }
       } else {
         this.tryAbility(u);
         if (u.alive && u.castKind === CastKind.None) this.tryAuto(u);
       }
     }
+    this.advanceProjectiles();
     this.separate();
     this.checkEnd();
   }
@@ -587,6 +628,7 @@ export class CombatSim {
   }
   /** Clears the last fight's enemies and summons; party HP carries over; party ids are renumbered 0..n-1; the log restarts. */
   prepareNextFight(): void {
+    this.projectiles = [];
     const kept: Unit[] = [];
     for (const u of this.units) {
       if (u.enemy || u.summon) continue;
@@ -623,6 +665,8 @@ export class CombatSim {
   /** The tuning menu changes live values (enemy stats apply to enemies spawned afterwards). */
   mutableConfig(): CombatConfig { return this.cfg; }
   getUnits(): readonly Unit[] { return this.units; }
+  /** Autos in flight (drawn by the scene); empty once the fight is over. */
+  getProjectiles(): readonly Projectile[] { return this.projectiles; }
   primaryAbilityCooldown(id: UnitId): AbilityCooldown {
     const c: AbilityCooldown = { remaining: 0, total: 0, valid: false };
     const u = this.getUnit(id);
@@ -630,7 +674,7 @@ export class CombatSim {
     const ab = this.data.findAbility(u.abilityId);
     if (!ab || !(ab.Cooldown > 0)) return c;
     c.valid = true;
-    c.total = ab.Cooldown;
+    c.total = this.cooldownOf(u.abilityId);
     c.remaining = Math.max(0.0, c.total - u.abilityTimer);
     return c;
   }
@@ -779,7 +823,7 @@ export class CombatSim {
   // ------------------------------------------------------------------ setup helpers
   private initAbilityTimers(u: Unit): void {
     const readyAtStart = (id: string): boolean => this.cfg.readyAtStartAbilities.includes(id);
-    const cooldownOf = (id: string): number => this.data.findAbility(id)?.Cooldown ?? 0.0;
+    const cooldownOf = (id: string): number => this.cooldownOf(id);
     if (u.abilityId !== '' && readyAtStart(u.abilityId)) u.abilityTimer = cooldownOf(u.abilityId);
     for (const x of u.extraAbilities) if (readyAtStart(x.id)) x.timer = cooldownOf(x.id);
   }
@@ -1021,6 +1065,7 @@ export class CombatSim {
     for (const u of this.units) {
       if (u.summon && u.alive) { u.alive = false; u.removed = true; }
     }
+    this.projectiles = [];
     if (result === FightState.TimedOut) this.note('Fight hit the runaway guard (no one can win): TIMEOUT');
     this.bus.raise('FightEnded', { fightIndex: this.fightIndex, partyWon: result === FightState.Won });
     if (result === FightState.Wiped && this.firstDeath.valid) this.note(this.firstDeath.text);
@@ -1083,16 +1128,16 @@ export class CombatSim {
     if (u.tauntEnemiesLeft > 0.0) u.tauntEnemiesLeft = Math.max(0.0, u.tauntEnemiesLeft - dt);
     const regen = u.stats.get(StatId.HealthRegen);
     if (regen > 0.0) u.hp = Math.min(this.maxHp(u), u.hp + regen * dt);
-    const interval = 1.0 / u.stats.get(StatId.AttackSpeed);
+    const interval = 1.0 / this.speedOf(u);
     // The timer may hold up to one tick beyond the interval so the remainder of a shot is carried; no burst.
     u.attackTimer = Math.min(u.attackTimer + dt, interval + dt);
     const cdr = 1.0 + u.stats.get(StatId.CooldownReduction);
     if (u.abilityId !== '') {
-      const cd = this.data.findAbility(u.abilityId)?.Cooldown ?? 0.0;
+      const cd = this.cooldownOf(u.abilityId);
       u.abilityTimer = Math.min(u.abilityTimer + dt * cdr, cd);
     }
     for (const x of u.extraAbilities) {
-      const cd = this.data.findAbility(x.id)?.Cooldown ?? 0.0;
+      const cd = this.cooldownOf(x.id);
       x.timer = Math.min(x.timer + dt * cdr, cd);
     }
     if (u.summon && !u.weapon) {
@@ -1334,8 +1379,9 @@ export class CombatSim {
   // ------------------------------------------------------------------ auto attack
   private tryAuto(u: Unit): void {
     if (u.hasWeaponSpirit) return; // the Summoner's weapon is its spirit
-    const interval = 1.0 / u.stats.get(StatId.AttackSpeed);
-    if (u.attackTimer < interval - 1e-9) return;
+    const interval = 1.0 / this.speedOf(u);
+    const bound = this.autoCastBase(u) > 0.0; // cast-bound casters have no swing timer: the cast time is the limit
+    if (!bound && u.attackTimer < interval - 1e-9) return;
     const range = u.stats.get(StatId.Range);
     let tags: number = DamageTag.Auto;
     if (u.summon) tags |= DamageTag.Summon;
@@ -1344,9 +1390,10 @@ export class CombatSim {
       const hurt = this.lowestHpAlly(u, true);
       if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold) {
         if (dist(u, hurt) > range) return; // waiting to get the ally into Range
-        u.attackTimer -= interval;
-        const healBase = kHealBase * u.autoHealScale * u.healFloorMult;
-        const w = this.autoWindup(u);
+        if (!bound) u.attackTimer -= interval;
+        const power = (bound ? this.autoCastPower(u) : 1.0) * this.autoPower(u);
+        const healBase = kHealBase * u.autoHealScale * u.healFloorMult * power;
+        const w = bound ? this.autoCastTime(u) : this.autoWindup(u);
         if (w > 0.0) { this.startCast(u, CastKind.AutoHeal, w, hurt.id, 0, healBase); return; }
         this.applyHeal(u.id, hurt.id, healBase);
         return;
@@ -1360,11 +1407,59 @@ export class CombatSim {
       if (reach.length) tgt = this.closestOf(u, reach);
     }
     if (!tgt || !tgt.alive || dist(u, tgt) > range) return;
-    u.attackTimer -= interval;
+    if (!bound) u.attackTimer -= interval;
     this.bus.raise('AttackStarted', { attacker: u.id, target: tgt.id });
-    const w = this.autoWindup(u);
+    const w = bound ? this.autoCastTime(u) : this.autoWindup(u);
+    u.castScale = (bound ? this.autoCastPower(u) : 1.0) * this.autoPower(u);
     if (w > 0.0) { this.startCast(u, CastKind.Auto, w, tgt.id, tags, 0.0); return; }
-    this.dealDamage(u.id, tgt.id, 1.0, tags);
+    this.launchAuto(u, tgt.id, u.castScale, tags);
+  }
+
+  /** Testing-menu multipliers (see CombatConfig). */
+  private autoPower(u: Unit): number { return u.summon ? 1.0 : this.cfg.autoPowerMult.get(u.name) ?? 1.0; }
+  private speedOf(u: Unit): number { return u.stats.get(StatId.AttackSpeed) * (u.summon ? 1.0 : this.cfg.autoSpeedMult.get(u.name) ?? 1.0); }
+  private abilityPower(name: string): number { return this.cfg.abilityPowerMult.get(name) ?? 1.0; }
+  private cooldownOf(name: string): number { return (this.data.findAbility(name)?.Cooldown ?? 0.0) * (this.cfg.abilityCooldownMult.get(name) ?? 1.0); }
+
+  /** The unit's base auto cast time when it is cast-bound right now (listed in autoCastTimes and the time scale is on), else 0. */
+  private autoCastBase(u: Unit): number {
+    if (u.summon || this.cfg.castTimeScale <= 0.0) return 0.0;
+    const base = this.cfg.autoCastTimes.get(u.name);
+    return base !== undefined && base > 0.0 ? base : 0.0;
+  }
+  /** Seconds one auto cast takes now: base x (class base AttackSpeed / current AttackSpeed), so AttackSpeed upgrades act as cast speed. */
+  private autoCastTime(u: Unit): number {
+    const baseAs = Math.max(1e-6, u.stats.getBase(StatId.AttackSpeed));
+    return this.cfg.castTimeScale * this.autoCastBase(u) * baseAs / this.speedOf(u);
+  }
+  /** Damage and heal multiplier of a cast-bound auto: base cast time x class base AttackSpeed, so a longer base cast hits harder and the
+   *  class's DPS (and healing per second) stays what ClassData says. Not scaled by AttackSpeed or by the testing time scale. */
+  private autoCastPower(u: Unit): number {
+    return this.autoCastBase(u) * Math.max(1e-6, u.stats.getBase(StatId.AttackSpeed));
+  }
+  /** An auto hit: a projectile when the unit is a projectile caster and flight time is on, else damage right now. */
+  private launchAuto(u: Unit, targetId: UnitId, scale: number, tags: number): void {
+    if (this.cfg.projectileSpeed > 0.0 && this.cfg.projectileUnits.includes(u.name)) {
+      this.projectiles.push({ id: this.nextProjectileId++, source: u.id, target: targetId, x: u.x, y: u.y, scale, tags });
+      return;
+    }
+    this.dealDamage(u.id, targetId, scale, tags);
+  }
+  private advanceProjectiles(): void {
+    if (this.projectiles.length === 0) return;
+    const step = this.cfg.projectileSpeed * this.cfg.dt;
+    const kept: Projectile[] = [];
+    for (const p of this.projectiles) {
+      const tgt = this.getUnit(p.target);
+      if (!tgt || !tgt.alive || tgt.removed) continue; // the target died in flight: the bolt is lost
+      const dx = tgt.x - p.x, dy = tgt.y - p.y;
+      const d = hypot(dx, dy);
+      if (d <= step) { this.dealDamage(p.source, p.target, p.scale, p.tags); continue; }
+      p.x += (dx / d) * step;
+      p.y += (dy / d) * step;
+      kept.push(p);
+    }
+    this.projectiles = kept; // a landing hit launches nothing, so nothing is added while the loop runs
   }
 
   // ------------------------------------------------------------------ casts and windups
@@ -1394,12 +1489,12 @@ export class CombatSim {
     const kind = u.castKind;
     u.castKind = CastKind.None;
     u.castLeft = 0.0;
-    const interval = 1.0 / u.stats.get(StatId.AttackSpeed);
+    const interval = 1.0 / this.speedOf(u);
     const t = this.getUnit(u.castTarget);
     const targetOk = !!t && t.alive && !t.removed;
     if (kind === CastKind.Auto) {
       if (!targetOk) { u.attackTimer = Math.min(u.attackTimer + interval, interval + this.cfg.dt); return; } // fizzle: refunded
-      this.dealDamage(u.id, t!.id, 1.0, u.castTags);
+      this.launchAuto(u, t!.id, u.castScale, u.castTags);
     } else if (kind === CastKind.AutoHeal) {
       if (!targetOk || t!.hp >= this.maxHp(t!) - 1e-9) { u.attackTimer = Math.min(u.attackTimer + interval, interval + this.cfg.dt); return; }
       this.applyHeal(u.id, t!.id, u.castHeal);
@@ -1520,7 +1615,7 @@ export class CombatSim {
     const ab = this.data.findAbility(abilityId);
     if (!ab || ab.EffectIds.length === 0) return false;
     if (!force) {
-      if (this.getTimer(u, slot) < ab.Cooldown - 1e-9) return false;
+      if (this.getTimer(u, slot) < this.cooldownOf(abilityId) - 1e-9) return false;
       if (!this.triggerAllows(u)) return false;
     }
     const effects = this.sortedEffects(abilityId);
@@ -1549,7 +1644,7 @@ export class CombatSim {
     const effects = this.sortedEffects(u.castAbility);
     if (effects.length === 0 || !ab) return;
     this.forcingCast = false;
-    if (this.effectTargets(u, effects[0]).length === 0) { this.setTimer(u, u.castSlot, ab.Cooldown); return; }
+    if (this.effectTargets(u, effects[0]).length === 0) { this.setTimer(u, u.castSlot, this.cooldownOf(u.castAbility)); return; }
     this.bus.raise('AbilityCast', { caster: u.id, abilityId: ab.Name });
     for (const eff of effects) this.applyEffect(u, eff);
   }
@@ -1557,7 +1652,10 @@ export class CombatSim {
   private applyEffect(u: Unit, eff: AbilityEffectRow): void {
     const r = this.resolveValue(eff);
     if (!r) return;
-    const { value, duration } = r;
+    const { duration } = r;
+    const powerMult = this.abilityPower(eff.AbilityId);
+    // Power scales damage, heals and buff strength; a Taunt's "value" is only a flag.
+    const value = eff.Type === 'ApplyModifier' && eff.Stat === 'Taunt' ? r.value : r.value * powerMult;
     // Collect ids first: a target dying mid-loop must not break iteration.
     const ids = this.effectTargets(u, eff).map((t) => t.id);
     switch (eff.Type) {
@@ -1637,7 +1735,7 @@ export class CombatSim {
     s.owner = owner.id;
     s.behavior = Behavior.Melee;
     s.stats.setBase(StatId.Health, greater ? cfg.greaterSpiritHp : cfg.spiritHp);
-    s.stats.setBase(StatId.Damage, (greater ? cfg.greaterSpiritDamage : cfg.spiritDamage) + Math.max(0.0, owner.stats.get(StatId.SpiritDamage)));
+    s.stats.setBase(StatId.Damage, ((greater ? cfg.greaterSpiritDamage : cfg.spiritDamage) + Math.max(0.0, owner.stats.get(StatId.SpiritDamage))) * (greater ? this.abilityPower('GreaterSpirit') : 1.0));
     s.stats.setBase(StatId.AttackSpeed, greater ? cfg.greaterSpiritAttackPerSec : cfg.spiritAttackPerSec);
     s.stats.setBase(StatId.Range, greater ? cfg.greaterSpiritRange : cfg.spiritRange);
     s.moveSpeed = greater ? cfg.greaterSpiritMoveSpeed : cfg.spiritMoveSpeed;
@@ -1661,8 +1759,8 @@ export class CombatSim {
   private syncWeaponSpirit(s: Unit): void {
     const o = this.getUnit(s.owner);
     if (!o || !o.alive) return;
-    s.stats.setBase(StatId.Damage, o.stats.get(StatId.Damage) + Math.max(0.0, o.stats.get(StatId.SpiritDamage)));
-    s.stats.setBase(StatId.AttackSpeed, o.stats.get(StatId.AttackSpeed));
+    s.stats.setBase(StatId.Damage, (o.stats.get(StatId.Damage) + Math.max(0.0, o.stats.get(StatId.SpiritDamage))) * this.autoPower(o));
+    s.stats.setBase(StatId.AttackSpeed, this.speedOf(o));
     s.stats.setBase(StatId.Range, o.stats.get(StatId.Range));
     s.stats.setBase(StatId.CritChance, o.stats.get(StatId.CritChance));
     s.stats.setBase(StatId.CritFactor, o.stats.get(StatId.CritFactor));

@@ -15,6 +15,7 @@ import { TextPool, box, classColor, fitScale, kBaseFontPx, kTextDim, kTextLight,
 import { HudGraphics, blueGem, goldGem, icon, kHud, ornatePanel, plate, poly, statIcon, stud, wing } from './hudStyle';
 import { themeById } from '../ui/roomTheme';
 import { kThemeId, roomHaze, type RoomView } from './roomView';
+import { heroLabel } from '../core/heroSheet';
 import { readability } from './combatText';
 import { heroFaceKey, spriteSizes } from './heroMotion';
 import { loadTuning, saveTuning } from './localStore';
@@ -25,6 +26,13 @@ export interface HudOptions { testing: boolean }
 /** A tuning row. `id` is what the saved values are keyed by, so keep ids stable; `tab`: 0 party and miracles, 1 enemies, 2 sprites and
  *  room, 3 readability. */
 interface TuneDef { id: string; name: string; step: number; min: number; max: number; tab: number }
+/** [class, basic attack name] for every hero (heroSheet kHeroOrder); the unit names the sim keys its multipliers by. */
+const kTuneHeroes: [string, string][] = [['Warrior', 'Sword Strike'], ['Mage', 'Arcane Shot'], ['Assassin', 'Twin Blades'], ['Priest', 'Searing Light'],
+  ['Barbarian', 'Heavy Swing'], ['Summoner', 'Spirit']];
+const kCastBound = ['Mage', 'Priest'];
+/** [AbilityData id, shown name] for every hero ability. Power scales its damage, heal or buff strength (Greater Spirit: the spirit's damage). */
+const kTuneAbilities: [string, string][] = [['Taunt', 'Taunt'], ['Cleave', 'Cleave'], ['Fireball', 'Fireball'], ['Execute', 'Execute'],
+  ['GroupHeal', 'Prayer of Mending'], ['Rage', 'Rage'], ['GreaterSpirit', 'Greater Spirit']];
 const kTune: TuneDef[] = [
   { id: 'enemyMult', name: 'Enemy health and damage x', step: 0.1, min: 0.3, max: 4, tab: 1 },
   { id: 'castTime', name: 'Cast times and windups x (0 = instant)', step: 0.25, min: 0, max: 3, tab: 0 },
@@ -45,8 +53,19 @@ const kTune: TuneDef[] = [
   { id: 'show:merge', name: 'Merge combat numbers (one total per unit, heals to the side)', step: 1, min: 0, max: 1, tab: 3 },
   { id: 'show:bars', name: 'Fewer health bars (enemies just hit, heroes when low; thinner)', step: 1, min: 0, max: 1, tab: 3 },
   { id: 'show:rings', name: 'Rings under feet (gold party, red enemies)', step: 1, min: 0, max: 1, tab: 3 },
+  // Appended last: tunePush reads the first rows by position. Searing Light heals while the most hurt ally is below this share of max HP.
+  { id: 'smiteThreshold', name: 'Searing Light heals below (ally HP share; above it, it smites)', step: 0.05, min: 0, max: 1, tab: 0 },
+  // Heroes' basic attack / heal (tab 4) and abilities (tab 5). Adding a hero or an ability: add it to these two lists so it is tunable.
+  ...kTuneHeroes.flatMap(([cls, attack]) => [
+    { id: `atkPower:${cls}`, name: `${heroLabel(cls)} ${attack} power x`, step: 0.05, min: 0.1, max: 4, tab: 4 },
+    { id: `atkSpeed:${cls}`, name: `${heroLabel(cls)} ${attack} speed x ${kCastBound.includes(cls) ? '(cast speed)' : '(attacks per second)'}`, step: 0.05, min: 0.25, max: 4, tab: 4 },
+  ]),
+  ...kTuneAbilities.flatMap(([id, name]) => [
+    { id: `abPower:${id}`, name: `${name} power x`, step: 0.05, min: 0.1, max: 4, tab: 5 },
+    { id: `abCooldown:${id}`, name: `${name} cooldown x`, step: 0.1, min: 0.1, max: 4, tab: 5 },
+  ]),
 ];
-const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites and room', 'Readability'];
+const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites and room', 'Readability', 'Attacks and speed', 'Abilities'];
 const tuneRow = (id: string): number => kTune.findIndex((d) => d.id === id);
 
 type Hit = { rect: Rect; action: () => void; prio: number };
@@ -767,6 +786,16 @@ export class Hud {
     m.shieldCost = base.shieldCost * this.tuneValue[4];
     m.smiteCost = base.smiteCost * this.tuneValue[4];
     c.miracle.smiteRadius = this.tuneValue[5];
+    const threshold = this.tuneValue[tuneRow('smiteThreshold')];
+    for (const u of sim.getUnits()) if (u.healer && !u.enemy && !u.summon) u.smiteThreshold = threshold;
+    kTune.forEach((d, i) => {
+      const [kind, key] = d.id.split(':');
+      const v = this.tuneValue[i];
+      if (kind === 'atkPower') c.autoPowerMult.set(key, v);
+      else if (kind === 'atkSpeed') c.autoSpeedMult.set(key, v);
+      else if (kind === 'abPower') c.abilityPowerMult.set(key, v);
+      else if (kind === 'abCooldown') c.abilityCooldownMult.set(key, v);
+    });
   }
 
   /** The shipped value of every row. */
@@ -776,6 +805,7 @@ export class Hud {
         case 'enemyMult': return this.rm.opts.enemyMult;
         case 'gaugeFill': return defaultMiracle.fillPerHit;
         case 'smiteRadius': return defaultMiracle.smiteRadius;
+        case 'smiteThreshold': return 0.85; // CombatConfig smiteThreshold / the Priest's ClassData SmiteThreshold
         case 'hurtSeconds': return 0.3;
         case 'hazeDepth': return kHazeDefault.depth;
         case 'hazeAlpha': return kHazeDefault.alpha;
@@ -899,8 +929,10 @@ ${text}`);
     const aw = (panel.w - 2 * pad - pad) / 3;
     const copy = this.copiedLeft > 0 ? 'Copied (also in the console)' : 'Copy changed values';
     const labels = [['Fill miracle gauge', 'Heal party to full', 'Reset tuning'], ['Kill all enemies', 'Heal enemies to full', 'Reset tuning'],
-      [copy, 'Kill all enemies', 'Reset tuning'], [copy, 'Kill all enemies', 'Reset tuning']][this.tuneTab];
-    const boxes = [['Fill', 'Heal', 'Reset'], ['KillAll', 'HealFoes', 'Reset'], ['Copy', 'KillAll', 'Reset'], ['Copy', 'KillAll', 'Reset']][this.tuneTab];
+      [copy, 'Kill all enemies', 'Reset tuning'], [copy, 'Kill all enemies', 'Reset tuning'], [copy, 'Kill all enemies', 'Reset tuning'],
+      [copy, 'Kill all enemies', 'Reset tuning']][this.tuneTab];
+    const boxes = [['Fill', 'Heal', 'Reset'], ['KillAll', 'HealFoes', 'Reset'], ['Copy', 'KillAll', 'Reset'], ['Copy', 'KillAll', 'Reset'], ['Copy', 'KillAll', 'Reset'],
+      ['Copy', 'KillAll', 'Reset']][this.tuneTab];
     for (let k = 0; k < 3; ++k) {
       const r = new Rect(panel.x + pad + k * (aw + pad * 0.5), y, aw, rowH * 1.1);
       this.frame(r, lin(0.1, 0.09, 0.2), 0.95, r.contains(this.mouse.x, this.mouse.y), false);
