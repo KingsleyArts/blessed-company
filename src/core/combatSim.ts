@@ -344,6 +344,8 @@ export class CombatSim {
   private projectiles: Projectile[] = [];
   /** The ability threat multiplier of the damage being dealt right now (AbilityData ThreatMultiplier); 1 outside an ability hit. */
   private threatNow = 1.0;
+  /** The AbilityData id of the ability whose damage is being dealt right now ('' outside one); carried on DamageDealt for the run report. */
+  private damageAbility = '';
   private nextProjectileId = 1;
   private pendingLifesteal: PendingLifesteal[] = [];
   private forcingCast = false;
@@ -850,7 +852,7 @@ export class CombatSim {
     const applied = Math.min(dmg, tgt.hp);
     if (applied <= 0.0) return 0.0;
     tgt.hp -= applied;
-    this.bus.raise('DamageDealt', { source: sourceId, target: targetId, amount: applied, crit, tags });
+    this.bus.raise('DamageDealt', { source: sourceId, target: targetId, amount: applied, crit, tags, ability: this.damageAbility });
     this.bus.raise('DamageTaken', { target: targetId, source: sourceId, amount: applied, crit, tags });
     if (tgt.hp <= 1e-9) this.kill(tgt, sourceId);
     return applied;
@@ -1541,8 +1543,10 @@ export class CombatSim {
     if (d <= reach) {
       const ab = this.data.findAbility(u.rushAbility);
       this.threatNow = ab?.ThreatMultiplier ?? 1.0;
+      this.damageAbility = u.rushAbility;
       this.dealDamage(u.id, t.id, u.rushValue, DamageTag.Ability);
       this.threatNow = 1.0;
+      this.damageAbility = '';
       this.endRush(u, false);
       return;
     }
@@ -1833,8 +1837,10 @@ export class CombatSim {
     switch (eff.Type) {
       case 'Damage': {
         this.threatNow = this.data.findAbility(eff.AbilityId)?.ThreatMultiplier ?? 1.0;
+        this.damageAbility = eff.AbilityId;
         for (const id of ids) this.dealDamage(u.id, id, value, DamageTag.Ability);
         this.threatNow = 1.0;
+        this.damageAbility = '';
         break;
       }
       case 'Rush': {

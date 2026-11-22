@@ -21,7 +21,8 @@ import { kMetaMaxGold, makeMeta, parseMeta, resetProgress, serializeMeta, type M
 import { MiracleKind, MiracleResult } from './miracleGauge';
 import { RosterResult, activeParty, kActiveSlots, rosterIsActive, rosterOwns, rosterPriestClass, toggleActiveHero } from './roster';
 import { RunBot } from './runBot';
-import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, runOutcomeName, type PendingGear, type RoomEntry, type RunResults } from './runFlow';
+import { RunStats, type DamageReport, type RoomDamage } from './runStats';
+import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, roomTypeName, runOutcomeName, type PendingGear, type RoomEntry, type RunResults } from './runFlow';
 import { buildMapView, type MapView } from './runMapView';
 import { parseRunSave, serializeRunSave } from './runSave';
 import { heroLabel, heroSkills, heroStatLines, kHeroOrder, roleLabel, rolePriority, type HeroSheet } from './heroSheet';
@@ -88,6 +89,9 @@ export interface RunResultsView {
   kills: number;
   roomsCleared: number;
   bestFloor: number;
+  /** Expedition Report breakdowns (empty until a run has been fought). */
+  damage: DamageReport;
+  rooms: RoomDamage[];
 }
 
 export interface SidebarRowView {
@@ -177,6 +181,7 @@ interface Timer { at: number; fn: () => void }
 export class RunManager {
   // ---- run layer ----
   private flow = new RunFlow();
+  private stats = new RunStats();
   private floorSize: FloorSize | undefined;
   private meta: MetaSave = makeMeta();
   private metaLoaded = false;
@@ -333,6 +338,7 @@ export class RunManager {
 
   private flowStart(seed: number, testSetup: boolean): void {
     this.flow = new RunFlow();
+    this.stats.reset();
     this.flow.setGearChoice(this.opts.gearChoice);
     if (this.floorSize) this.flow.setFloorSize(this.floorSize);
     this.ensureMetaLoaded();
@@ -371,11 +377,22 @@ export class RunManager {
     const sim = this.sim!;
     this.staged = false;
     sim.startFight();
+    this.trackStats(sim);
     this.heldShields.clear();   // held shields now tick down in this fight
     this.accumulator = 0;
     this.finishHandled = false;
     this.bodiesCleared = false;
     this.subscribeKills();
+  }
+
+  /** Feeds the Expedition Report: damage dealt and taken, filed under the room the party is in. */
+  private trackStats(sim: CombatSim): void {
+    for (const u of sim.getUnits()) if (!u.enemy && !u.summon && !u.removed) this.stats.noteHero(u.name);
+    this.stats.attach(sim, this.data, () => {
+      const run = this.flow.getRun();
+      const node = run.floor.nodes[run.currentNode];
+      return { floor: run.floorNumber, node: run.currentNode, type: node ? roomTypeName(node.type) : '?' };
+    });
   }
 
   private subscribeKills(): void {
@@ -538,6 +555,7 @@ export class RunManager {
     flow.setGearChoice(this.opts.gearChoice);
     if (this.floorSize) flow.setFloorSize(this.floorSize);
     this.flow = flow;
+    this.stats.reset();   // a resumed run starts its report afresh
     this.applyMetaToFlow();
     flow.setPriestOwned(this.meta.priestUnlocked);
     if (!flow.restore(cp.flow)) {
@@ -885,13 +903,14 @@ export class RunManager {
     const r: RunResults = this.flow.getResults();
     const out: RunResultsView = {
       valid: false, victory: false, outcome: '', floorReached: 0, essenceEarned: 0, goldEarned: 0, seed: 0n, causeOfDeath: '', killerName: '',
-      priestRescued: false, kills: 0, roomsCleared: 0, bestFloor: 0,
+      priestRescued: false, kills: 0, roomsCleared: 0, bestFloor: 0, damage: { total: 0, heroes: [] }, rooms: [],
     };
     if (this.flow.active() || r.outcome === RunOutcome.InProgress) return out;
     return {
       valid: true, victory: r.outcome === RunOutcome.Victory, outcome: runOutcomeName(r.outcome), floorReached: r.floorReached,
       essenceEarned: r.essenceEarned, goldEarned: r.goldEarned, seed: BigInt(r.seed), causeOfDeath: r.causeOfDeath, killerName: r.killerName,
       priestRescued: r.priestRescued, kills: r.kills, roomsCleared: r.roomsCleared, bestFloor: this.meta.bestFloor,
+      damage: this.stats.damageReport(), rooms: this.stats.roomReport(),
     };
   }
 

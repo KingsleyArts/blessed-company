@@ -4,6 +4,8 @@
 // footer. Built with DOM calls only, never innerHTML with game text.
 import type { HeroSheet } from '../core/heroSheet';
 import type { TempleItem, TempleSnapshot } from '../core/runManager';
+import type { DamageReport, RoomDamage } from '../core/runStats';
+import { kReportCss, reportDamageBody } from './reportView';
 import { amountLabel, formatCount, type ResultLine } from '../core/uiText';
 import { buildFloorSizeDebug, type FloorSizeDebug } from './floorSizeDebug';
 
@@ -16,7 +18,9 @@ export interface TempleView {
   amountMode: number;
   volume: number;
   /** The last run's result lines, if there was a run. */
-  report: { victory: boolean; lines: ResultLine[] } | undefined;
+  report: { victory: boolean; lines: ResultLine[]; damage: DamageReport; rooms: RoomDamage[] } | undefined;
+  /** Testing builds: the report gets its Damage taken (by room) tab. */
+  debug: boolean;
   tab: TempleTab;
   resetArmed: boolean;
   /** Heroes tab: every hero's sheet (empty on other tabs), the hero shown in the stats card, and the party in the bar (empty while
@@ -293,7 +297,7 @@ function ensureStyle(): void {
   if (styled) return;
   styled = true;
   const s = document.createElement('style');
-  s.textContent = kCss;
+  s.textContent = kCss + kReportCss;
   document.head.appendChild(s);
 }
 
@@ -570,6 +574,7 @@ function tabBody(v: TempleView, a: TempleActions): HTMLElement {
       if (l.value !== '') row.appendChild(el('span', 'v', l.value));
       box.appendChild(row);
     }
+    box.appendChild(reportDamageBody(v.report.damage, v.report.rooms, v.debug));
     return box;
   }
   // Settings.

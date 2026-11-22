@@ -195,7 +195,7 @@ export class Overlay {
       this.onRerender?.();
     };
     const built = buildTemple({
-      floorSize: h.floorSize, snapshot: t, essence, amountMode, volume, report, tab: this.templeTab, resetArmed: performance.now() < this.resetArmedUntil,
+      floorSize: h.floorSize, debug: h.floorSize !== undefined, snapshot: t, essence, amountMode, volume, report, tab: this.templeTab, resetArmed: performance.now() < this.resetArmedUntil,
       heroes, heroPick: this.heroPick, party, wasWide: this.kind === 'temple' && this.shownTab === 'heroes',
     }, {
       buy: h.buy,

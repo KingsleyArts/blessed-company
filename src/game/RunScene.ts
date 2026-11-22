@@ -213,7 +213,7 @@ export class RunScene extends Phaser.Scene {
     if (!t.valid) return;
     const r = this.rm.getRunResults();
     const report = r.valid
-      ? { victory: r.victory, lines: formatResultLines(r.causeOfDeath, r.killerName, r.floorReached, r.roomsCleared, r.kills, r.essenceEarned, r.goldEarned, r.bestFloor) }
+      ? { victory: r.victory, lines: formatResultLines(r.causeOfDeath, r.killerName, r.floorReached, r.roomsCleared, r.kills, r.essenceEarned, r.goldEarned, r.bestFloor), damage: r.damage, rooms: r.rooms }
       : undefined;
     this.overlay.showTemple(t, this.rm.getFlow().getRun().essence, this.hud.ui.amountMode, this.music.getVolume(), report, {
       buy: (id) => { this.rm.templeBuy(id, amountValue(this.hud.ui.amountMode)); },
