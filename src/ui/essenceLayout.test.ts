@@ -16,14 +16,13 @@ describe('Essence menu layout', () => {
     expect(top.first).toBe(0);
     expect(end.first).toBe(9 - kVisibleEssenceRows);
     expect(end.maxFirst).toBe(9 - kVisibleEssenceRows);
-    expect(end.thumb.bottom()).toBeCloseTo(end.track.bottom(), 6);
-    expect(top.thumb.y).toBeCloseTo(top.track.y, 6);
+    expect(end.rows[0].row.y).toBeCloseTo(top.rows[0].row.y, 9);   // the window stays put, the stats move through it
   });
   it('NothingScrollsWhenEverythingFits', () => {
     const l = computeEssenceLayout(panel, 4, 1, 3);
     expect(l.maxFirst).toBe(0);
     expect(l.first).toBe(0);
-    expect(l.thumb.h).toBeCloseTo(l.track.h, 6);
+    expect(l.slotH).toBeGreaterThan(0);
   });
   it('RowsStayInsideTheViewportAndLeaveTheAmountButtonsClear', () => {
     const l = computeEssenceLayout(panel, 12, 1, 5);

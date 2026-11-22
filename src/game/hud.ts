@@ -8,7 +8,7 @@ import { MiracleKind, MiracleResult, miracleName, miracleTargetsEnemy } from '..
 import type { FloorSnapshot, RunManager, SidebarSnapshot } from '../core/runManager';
 import { amountLabel, amountValue, formatBonusChange, formatBuyButton, formatCount, formatValueChange, roomLabel, statDisplayName } from '../core/uiText';
 import {
-  type EssenceLayout, MapGeometry, Rect, UiState, arrowRect, computeEssenceLayout, computeLayout, computeMinimapRegions, computeRoomControls, cooldownFraction,
+  type EssenceLayout, MapGeometry, kVisibleEssenceRows, Rect, UiState, arrowRect, computeEssenceLayout, computeLayout, computeMinimapRegions, computeRoomControls, cooldownFraction,
   fillFraction, portraitAt, type Layout,
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, fitScale, kBaseFontPx, kTextDim, kTextLight, lin, outline } from './draw';
@@ -96,7 +96,7 @@ export class Hud {
   private essScroll = 0;
   private essFor = -1;
   private essLayout: EssenceLayout | undefined;
-  private essDrag = false;
+  private essPress: { stat: string | undefined; y0: number; scroll0: number; moved: boolean } | undefined;
   private flashAge = 9;
   private flashRefused = false;
   private armed: MiracleKind | undefined;
@@ -207,9 +207,17 @@ export class Hud {
   // ------------------------------------------------------------------------------------------ input
   pointerMove(x: number, y: number): void {
     this.mouse = { x, y };
-    if (this.essDrag) this.essenceThumbTo(y);
+    const p = this.essPress, E = this.essLayout;
+    if (!p || !E) return;
+    // A swipe on the Essence menu (finger or mouse) scrolls its rows with the finger; a press that never moved is a tap.
+    if (!p.moved && Math.abs(y - p.y0) > 8 * this.scale) p.moved = true;
+    if (p.moved) this.essScroll = Math.max(0, Math.min(E.maxFirst, p.scroll0 - (y - p.y0) / Math.max(1, E.slotH)));
   }
-  pointerUp(): void { this.essDrag = false; }
+  pointerUp(): void {
+    const p = this.essPress;
+    this.essPress = undefined;
+    if (p && !p.moved && p.stat !== undefined) this.buy(p.stat);   // buying waits for the release so a swipe over a button does not buy
+  }
   /** The mouse wheel over the Essence menu scrolls its stat rows; true when it was used. */
   wheel(x: number, y: number, deltaY: number): boolean {
     const E = this.essLayout;
@@ -217,12 +225,11 @@ export class Hud {
     this.essScroll = Math.max(0, Math.min(E.maxFirst, E.first + (deltaY > 0 ? 1 : -1)));
     return true;
   }
-  /** Puts the scrollbar thumb's centre at screen y (a click on the track or a drag). */
-  private essenceThumbTo(y: number): void {
+  /** An arrow on the Essence menu: scrolls most of a page (as the Temple's arrows do). */
+  private essenceArrow(dir: number): void {
     const E = this.essLayout;
-    if (!E || E.maxFirst <= 0) return;
-    const free = Math.max(1, E.track.h - E.thumb.h);
-    this.essScroll = Math.max(0, Math.min(E.maxFirst, Math.round(((y - E.track.y - E.thumb.h / 2) / free) * E.maxFirst)));
+    if (!E) return;
+    this.essScroll = Math.max(0, Math.min(E.maxFirst, E.first + dir * (kVisibleEssenceRows - 1)));
   }
 
   pointerDown(x: number, y: number): boolean {
@@ -681,14 +688,25 @@ export class Hud {
       if (!max) goldGem(this.g, x0 + ic / 2, R.button.y + R.button.h / 2, ic * 0.48, ic * 0.68);
       t.setPosition(x0 + ic + gap, R.button.y + R.button.h / 2);
       const stat = row.stat;
-      if (on) this.hit(R.button, 1, () => this.buy(stat));
+      if (on) this.hit(R.button, 1, () => { this.essPress = { stat, y0: this.mouse.y, scroll0: this.essScroll, moved: false }; });   // buys on release (a swipe is not a tap)
     }
-    if (E.maxFirst > 0) {   // more stats than fit: a scrollbar (wheel over the menu, click the track or drag the thumb)
-      plate(this.g, E.track, S, kHud.well, { edge: 0x5d4530, radius: 3 * S, sheen: 0 });
-      const grab = this.essDrag || E.thumb.contains(this.mouse.x, this.mouse.y);
-      plate(this.g, E.thumb, S, grab ? kHud.goldBtn : 0x7a5a24, { edge: grab ? kHud.goldLit : kHud.gold, radius: 3 * S, sheen: 0.12 });
-      this.hit(E.track, 1, () => { this.essDrag = true; this.essenceThumbTo(this.mouse.y); });
+    if (E.maxFirst > 0) {   // more stats than fit: swipe or wheel to scroll; arrows show which way there is more (like the Temple's)
+      const aw = 30 * S, ah = 18 * S;   // small, and straddling the menu's edges so they sit mostly in the gaps, clear of the row text
+      const pill = (up: boolean, on: boolean): void => {
+        const R = new Rect(E.viewport.x + (E.viewport.w - aw) / 2, up ? E.viewport.y - ah * 0.6 : E.viewport.bottom() - ah * 0.4, aw, ah);
+        plate(this.gTop, R, S, 0x180b26, { edge: R.contains(this.mouse.x, this.mouse.y) ? kHud.goldLit : kHud.gold, radius: ah / 2, sheen: 0 });
+        const cx = R.x + R.w / 2, cy = R.y + R.h / 2, w = ah * 0.34, h = ah * 0.16, d = up ? -1 : 1;
+        this.gTop.lineStyle(Math.max(1.5, 2 * S), kHud.goldLit, 1);
+        for (const o of [-0.2, 0.2]) {   // a double chevron
+          const y = cy + o * ah;
+          this.gTop.lineBetween(cx - w, y - d * h, cx, y + d * h).lineBetween(cx, y + d * h, cx + w, y - d * h);
+        }
+        if (on) this.hit(R, 3, () => this.essenceArrow(up ? -1 : 1));
+      };
+      if (E.first > 0) pill(true, true);
+      if (E.first < E.maxFirst) pill(false, true);
     }
+    this.hit(E.viewport, 0, () => { this.essPress = { stat: undefined, y0: this.mouse.y, scroll0: this.essScroll, moved: false }; });
     for (let i = 0; i < 4; ++i) {
       const B = E.amount[i];
       const active = i === this.ui.amountMode;

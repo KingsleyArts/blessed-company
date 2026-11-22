@@ -245,11 +245,9 @@ export interface EssenceLayout {
   first: number;
   /** Most rows scrolled past (0 when everything fits). */
   maxFirst: number;
-  /** The area the rows scroll in, and the scrollbar track beside it. */
+  /** The area the rows scroll in, and the distance from one row to the next. */
   viewport: Rect;
-  track: Rect;
-  /** The scrollbar thumb (the whole track when nothing scrolls). */
-  thumb: Rect;
+  slotH: number;
   amount: Rect[];
 }
 
@@ -257,9 +255,8 @@ export function computeEssenceLayout(panel: Rect, rowCount: number, scale: numbe
   rowCount = Math.max(0, rowCount);
   const pad = 14 * scale;
   const innerX = panel.x + pad;
-  const barW = 8 * scale, barGap = 4 * scale;   // the scrollbar gutter is always reserved, so rows keep one width
   const fullW = Math.max(1, panel.w - 2 * pad);
-  const innerW = Math.max(1, fullW - barW - barGap);
+  const innerW = fullW;
   const top = panel.y + 42 * scale;
   const ps = Math.min(0.22 * panel.w, 0.13 * panel.h);
   const portrait = new Rect(innerX, top, ps, ps);
@@ -284,9 +281,6 @@ export function computeEssenceLayout(panel: Rect, rowCount: number, scale: numbe
   const maxFirst = Math.max(0, rowCount - kVisibleEssenceRows);
   const first = Math.max(0, Math.min(maxFirst, Math.round(scroll)));
   const viewport = new Rect(innerX, rTop, innerW, slotH * kVisibleEssenceRows - rowGap);
-  const track = new Rect(innerX + innerW + barGap, rTop, barW, viewport.h);
-  const thumbH = maxFirst > 0 ? Math.max(14 * scale, track.h * kVisibleEssenceRows / rowCount) : track.h;
-  const thumb = new Rect(track.x, track.y + (maxFirst > 0 ? (track.h - thumbH) * (first / maxFirst) : 0), track.w, thumbH);
   const rows: EssenceRow[] = [];
   for (let i = 0; i < visible; ++i) {
     const row = new Rect(innerX, rTop + i * slotH, innerW, rowH);
@@ -300,5 +294,5 @@ export function computeEssenceLayout(panel: Rect, rowCount: number, scale: numbe
     const note = new Rect(rank.right(), row.y + topLine, row.right() - rank.right() - 4 * scale, rowH - topLine);
     rows.push({ row, name, values, button, rank, note });
   }
-  return { panel, portrait, nameText, classText, gearSlot, rows, first, maxFirst, viewport, track, thumb, amount };
+  return { panel, portrait, nameText, classText, gearSlot, rows, first, maxFirst, viewport, slotH, amount };
 }
