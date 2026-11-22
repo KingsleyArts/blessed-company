@@ -83,7 +83,7 @@ export function addTier1Stats(c: EssenceConfig): void {
     ['HealthRegen', StatId.HealthRegen, [], 0.1, 100, ' HP/s'],
     ['CooldownReduction', StatId.CooldownReduction, [], 0.005, 100, ''],
     ['Range', StatId.Range, ['Priest', 'Summoner', 'Mage'], 2.5, 120, ' range'],
-    ['HealPower', StatId.HealPower, ['Priest'], 0.01, 100, ''],
+    ['HealPower', StatId.HealPower, ['Priest', 'Summoner'], 0.01, 100, ''],   // a healer stat (director Nov 22), not the Priest's alone
     ['SpiritDamage', StatId.SpiritDamage, ['Summoner'], 0.2, 100, ' dmg'],
     ['SpiritDuration', StatId.SpiritDuration, ['Summoner'], 0.1, 100, ' s'],
   ];

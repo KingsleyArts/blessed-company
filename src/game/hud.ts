@@ -8,7 +8,7 @@ import { MiracleKind, MiracleResult, miracleName, miracleTargetsEnemy } from '..
 import type { FloorSnapshot, RunManager, SidebarSnapshot } from '../core/runManager';
 import { amountLabel, amountValue, formatBonusChange, formatBuyButton, formatCount, formatValueChange, roomLabel, statDisplayName } from '../core/uiText';
 import {
-  MapGeometry, Rect, UiState, arrowRect, computeEssenceLayout, computeLayout, computeMinimapRegions, computeRoomControls, cooldownFraction,
+  type EssenceLayout, MapGeometry, Rect, UiState, arrowRect, computeEssenceLayout, computeLayout, computeMinimapRegions, computeRoomControls, cooldownFraction,
   fillFraction, portraitAt, type Layout,
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, fitScale, kBaseFontPx, kTextDim, kTextLight, lin, outline } from './draw';
@@ -92,6 +92,11 @@ export class Hud {
   private sideDirty = true;
   private sideTimer = 0;
   private flashRow = -1;
+  /** Essence menu scroll: the first stat row shown, the layout last drawn (for the wheel and the thumb) and a thumb drag in progress. */
+  private essScroll = 0;
+  private essFor = -1;
+  private essLayout: EssenceLayout | undefined;
+  private essDrag = false;
   private flashAge = 9;
   private flashRefused = false;
   private armed: MiracleKind | undefined;
@@ -200,7 +205,25 @@ export class Hud {
   }
 
   // ------------------------------------------------------------------------------------------ input
-  pointerMove(x: number, y: number): void { this.mouse = { x, y }; }
+  pointerMove(x: number, y: number): void {
+    this.mouse = { x, y };
+    if (this.essDrag) this.essenceThumbTo(y);
+  }
+  pointerUp(): void { this.essDrag = false; }
+  /** The mouse wheel over the Essence menu scrolls its stat rows; true when it was used. */
+  wheel(x: number, y: number, deltaY: number): boolean {
+    const E = this.essLayout;
+    if (!E || E.maxFirst <= 0 || !E.panel.contains(x, y) || deltaY === 0) return false;
+    this.essScroll = Math.max(0, Math.min(E.maxFirst, E.first + (deltaY > 0 ? 1 : -1)));
+    return true;
+  }
+  /** Puts the scrollbar thumb's centre at screen y (a click on the track or a drag). */
+  private essenceThumbTo(y: number): void {
+    const E = this.essLayout;
+    if (!E || E.maxFirst <= 0) return;
+    const free = Math.max(1, E.track.h - E.thumb.h);
+    this.essScroll = Math.max(0, Math.min(E.maxFirst, Math.round(((y - E.track.y - E.thumb.h / 2) / free) * E.maxFirst)));
+  }
 
   pointerDown(x: number, y: number): boolean {
     this.mouse = { x, y };
@@ -598,7 +621,10 @@ export class Hud {
       this.texts.centered('es.none', 'No run', L.essence, kBaseFontPx * 0.95 * S, lin(0.5, 0.48, 0.46), 0.6);
       return;
     }
-    const E = computeEssenceLayout(L.essence, side.rows.length, S);
+    if (this.essFor !== side.characterIndex) { this.essFor = side.characterIndex; this.essScroll = 0; }   // each hero starts at the top
+    const E = computeEssenceLayout(L.essence, side.rows.length, S, this.essScroll);
+    this.essScroll = E.first;
+    this.essLayout = E;
     const member = side.party[side.characterIndex];
     const cls = member ? member.className : side.characterName;
     const col = classColor(cls);
@@ -617,8 +643,9 @@ export class Hud {
     const half = new Rect(gx + gi + 4 * S, E.gearSlot.y, E.gearSlot.right() - (gx + gi + 8 * S), gh);
     this.texts.fit('es.w', gearText('Weapon', side.weaponLevel, side.weaponDrops), half, kBaseFontPx * 1.05 * S, kTextLight);
     this.texts.fit('es.a', gearText('Armor', side.armorLevel, side.armorDrops), new Rect(half.x, half.y + half.h, half.w, half.h), kBaseFontPx * 1.05 * S, kTextLight);
-    for (let i = 0; i < E.rows.length && i < side.rows.length; ++i) {
-      const R = E.rows[i];
+    for (let k = 0; k < E.rows.length && E.first + k < side.rows.length; ++k) {
+      const i = E.first + k;   // the stat; k is its place on screen (text keys follow the place)
+      const R = E.rows[k];
       const row = side.rows[i];
       plate(this.g, R.row, S, kHud.well, { edge: 0x5d4530, radius: 3 * S, sheen: 0.025 });
       if (i === this.flashRow && this.flashAge < 0.45) {
@@ -631,9 +658,9 @@ export class Hud {
       icon(this.g, statIcon(row.stat), ix, R.row.y + R.row.h / 2, rs);
       const tx = ix + rs + 6 * S;
       const value = row.showValue ? formatValueChange(row.valueNow, row.valueNext) : formatBonusChange(row.currentBonus, row.nextBonus, row.unit);
-      this.textPair(`es.n${i}`, statDisplayName(row.stat), kBaseFontPx * 1.3 * S, kTextLight, `es.v${i}`, value, kBaseFontPx * 1.2 * S, kHud.goldLit,
+      this.textPair(`es.n${k}`, statDisplayName(row.stat), kBaseFontPx * 1.3 * S, kTextLight, `es.v${k}`, value, kBaseFontPx * 1.2 * S, kHud.goldLit,
         tx, R.button.x - 5 * S, R.name.y, R.name.h, R.values.x + 16 * S);
-      this.textPair(`es.r${i}`, `Rank ${row.rank}/${row.maxRank}`, kBaseFontPx * 1.05 * S, lin(0.75, 0.73, 0.7), `es.x${i}`, !row.canBuy && !max ? row.reason : '',
+      this.textPair(`es.r${k}`, `Rank ${row.rank}/${row.maxRank}`, kBaseFontPx * 1.05 * S, lin(0.75, 0.73, 0.7), `es.x${k}`, !row.canBuy && !max ? row.reason : '',
         kBaseFontPx * 0.95 * S, lin(0.95, 0.5, 0.45), tx, R.row.right() - 5 * S, R.rank.y, R.rank.h, tx);
       const want = amountValue(this.ui.amountMode);
       const full = want < 0 || (this.previewBought[i] ?? 0) >= want;
@@ -644,7 +671,7 @@ export class Hud {
       const bought = on ? this.previewBought[i] ?? 0 : 0;
       const label = formatBuyButton(max, cost, bought);
       const ic = max ? 0 : 0.38 * R.button.h;
-      const t = this.texts.at(`es.b${i}`, label, 0, 0, kBaseFontPx * 1.45 * S, on ? lin(1, 0.97, 0.88) : kTextDim, 0, 0.5);
+      const t = this.texts.at(`es.b${k}`, label, 0, 0, kBaseFontPx * 1.45 * S, on ? lin(1, 0.97, 0.88) : kTextDim, 0, 0.5);
       const maxW = R.button.w - 10 * S;
       const gap = max ? 0 : 7 * S;
       const scale = Math.min(t.width + ic + gap > maxW ? maxW / (t.width + ic + gap) : 1, fitScale(t, maxW, R.button.h - 4 * S));
@@ -655,6 +682,12 @@ export class Hud {
       t.setPosition(x0 + ic + gap, R.button.y + R.button.h / 2);
       const stat = row.stat;
       if (on) this.hit(R.button, 1, () => this.buy(stat));
+    }
+    if (E.maxFirst > 0) {   // more stats than fit: a scrollbar (wheel over the menu, click the track or drag the thumb)
+      plate(this.g, E.track, S, kHud.well, { edge: 0x5d4530, radius: 3 * S, sheen: 0 });
+      const grab = this.essDrag || E.thumb.contains(this.mouse.x, this.mouse.y);
+      plate(this.g, E.thumb, S, grab ? kHud.goldBtn : 0x7a5a24, { edge: grab ? kHud.goldLit : kHud.gold, radius: 3 * S, sheen: 0.12 });
+      this.hit(E.track, 1, () => { this.essDrag = true; this.essenceThumbTo(this.mouse.y); });
     }
     for (let i = 0; i < 4; ++i) {
       const B = E.amount[i];

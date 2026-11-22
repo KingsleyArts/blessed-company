@@ -4,9 +4,9 @@
 // footer. Built with DOM calls only, never innerHTML with game text.
 import type { HeroSheet } from '../core/heroSheet';
 import type { TempleItem, TempleSnapshot } from '../core/runManager';
-import type { DamageReport, RoomDamage } from '../core/runStats';
+import type { ExpeditionReport } from '../core/expeditionReport';
 import { kReportCss, reportDamageBody } from './reportView';
-import { amountLabel, formatCount, type ResultLine } from '../core/uiText';
+import { amountLabel, formatCount } from '../core/uiText';
 import { buildFloorSizeDebug, type FloorSizeDebug } from './floorSizeDebug';
 
 export type TempleTab = 'blessings' | 'equipment' | 'heroes' | 'report' | 'settings';
@@ -18,7 +18,7 @@ export interface TempleView {
   amountMode: number;
   volume: number;
   /** The last run's result lines, if there was a run. */
-  report: { victory: boolean; lines: ResultLine[]; damage: DamageReport; rooms: RoomDamage[] } | undefined;
+  report: ExpeditionReport | undefined;
   /** Testing builds: the report gets its Damage taken (by room) tab. */
   debug: boolean;
   tab: TempleTab;

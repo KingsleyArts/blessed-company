@@ -54,3 +54,24 @@ describe('RunStats', () => {
     CHECK(stats.damageReport().total === 0 && stats.roomReport().length === 0);
   });
 });
+
+describe('Heal Power is a healer stat', () => {
+  it('PriestAndSummonerBothCanTakeIt', async () => {
+    const { data: d } = await import('./combatTestKit');
+    for (const c of ['Priest', 'Summoner']) CHECK(d.findClassRow(c)!.AllowedStats.includes('HealPower'), c);
+    for (const c of ['Warrior', 'Mage', 'Assassin', 'Barbarian']) CHECK(!d.findClassRow(c)!.AllowedStats.includes('HealPower'), c);
+  });
+});
+
+describe('Expedition report persistence', () => {
+  it('SurvivesSerializeParseAndRejectsDamage', async () => {
+    const { serializeReport, parseReport } = await import('./expeditionReport');
+    const { stats } = fight();
+    const report = { victory: true, lines: [{ label: 'Floor reached', value: '3', wide: false }], damage: stats.damageReport(), rooms: stats.roomReport() };
+    const back = parseReport(serializeReport(report))!;
+    CHECK(back !== undefined && back.victory && back.lines.length === 1);
+    NEAR(back.damage.total, report.damage.total, 1e-9);
+    CHECK(back.rooms.length === report.rooms.length && back.damage.heroes[0].sources.length === report.damage.heroes[0].sources.length);
+    CHECK(parseReport(undefined) === undefined && parseReport('not json') === undefined && parseReport('{"victory":1}') === undefined);
+  });
+});

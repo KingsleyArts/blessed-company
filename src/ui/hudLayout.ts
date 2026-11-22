@@ -232,44 +232,63 @@ export class MapGeometry {
 }
 
 // ---------------------------------------------------------------- Essence menu (TolEssenceLayout.h)
-export const kMaxEssenceRows = 6;
+/** Rows shown at once (director Nov 22): every row is the same size, and more stats scroll instead of squeezing in. */
+export const kVisibleEssenceRows = 4;
 
 export interface EssenceRow { row: Rect; name: Rect; values: Rect; button: Rect; rank: Rect; note: Rect }
 
 export interface EssenceLayout {
   panel: Rect;
   portrait: Rect; nameText: Rect; classText: Rect; gearSlot: Rect;
+  /** The visible rows only; `rows[k]` shows stat number `first + k`. */
   rows: EssenceRow[];
+  first: number;
+  /** Most rows scrolled past (0 when everything fits). */
+  maxFirst: number;
+  /** The area the rows scroll in, and the scrollbar track beside it. */
+  viewport: Rect;
+  track: Rect;
+  /** The scrollbar thumb (the whole track when nothing scrolls). */
+  thumb: Rect;
   amount: Rect[];
 }
 
-export function computeEssenceLayout(panel: Rect, rowCount: number, scale: number): EssenceLayout {
-  rowCount = Math.max(0, Math.min(kMaxEssenceRows, rowCount));
+export function computeEssenceLayout(panel: Rect, rowCount: number, scale: number, scroll = 0): EssenceLayout {
+  rowCount = Math.max(0, rowCount);
   const pad = 14 * scale;
   const innerX = panel.x + pad;
-  const innerW = Math.max(1, panel.w - 2 * pad);
+  const barW = 8 * scale, barGap = 4 * scale;   // the scrollbar gutter is always reserved, so rows keep one width
+  const fullW = Math.max(1, panel.w - 2 * pad);
+  const innerW = Math.max(1, fullW - barW - barGap);
   const top = panel.y + 42 * scale;
   const ps = Math.min(0.22 * panel.w, 0.13 * panel.h);
   const portrait = new Rect(innerX, top, ps, ps);
   const tx = innerX + ps + 10 * scale;
-  const gw = 0.36 * innerW;
-  const gearSlot = new Rect(innerX + innerW - gw, top, gw, ps);
+  const gw = 0.36 * fullW;
+  const gearSlot = new Rect(innerX + fullW - gw, top, gw, ps);
   const tw = Math.max(1, gearSlot.x - 8 * scale - tx);
   const nameText = new Rect(tx, top + 0.04 * ps, tw, 0.5 * ps);
   const classText = new Rect(tx, top + 0.54 * ps, tw, 0.4 * ps);
   const ah = Math.min(46 * scale, 0.085 * panel.h);
   const ag = 8 * scale;
   const ay = panel.bottom() - pad - ah;
-  const aw = (innerW - ag * 3) / 4;
+  const aw = (fullW - ag * 3) / 4;
   const amount = [0, 1, 2, 3].map((i) => new Rect(innerX + i * (aw + ag), ay, aw, ah));
   const rTop = top + ps + 10 * scale;
   const rBottom = ay - 10 * scale;
   const areaH = Math.max(0, rBottom - rTop);
   const rowGap = 6 * scale;
-  const slotH = Math.min(92 * scale, areaH / Math.max(1, rowCount));
+  const slotH = Math.min(92 * scale, areaH / kVisibleEssenceRows);   // one size whatever the stat count
   const rowH = Math.max(1, slotH - rowGap);
+  const visible = Math.min(rowCount, kVisibleEssenceRows);
+  const maxFirst = Math.max(0, rowCount - kVisibleEssenceRows);
+  const first = Math.max(0, Math.min(maxFirst, Math.round(scroll)));
+  const viewport = new Rect(innerX, rTop, innerW, slotH * kVisibleEssenceRows - rowGap);
+  const track = new Rect(innerX + innerW + barGap, rTop, barW, viewport.h);
+  const thumbH = maxFirst > 0 ? Math.max(14 * scale, track.h * kVisibleEssenceRows / rowCount) : track.h;
+  const thumb = new Rect(track.x, track.y + (maxFirst > 0 ? (track.h - thumbH) * (first / maxFirst) : 0), track.w, thumbH);
   const rows: EssenceRow[] = [];
-  for (let i = 0; i < rowCount; ++i) {
+  for (let i = 0; i < visible; ++i) {
     const row = new Rect(innerX, rTop + i * slotH, innerW, rowH);
     const topLine = 0.6 * rowH;
     const bw = 0.3 * innerW;
@@ -281,5 +300,5 @@ export function computeEssenceLayout(panel: Rect, rowCount: number, scale: numbe
     const note = new Rect(rank.right(), row.y + topLine, row.right() - rank.right() - 4 * scale, rowH - topLine);
     rows.push({ row, name, values, button, rank, note });
   }
-  return { panel, portrait, nameText, classText, gearSlot, rows, amount };
+  return { panel, portrait, nameText, classText, gearSlot, rows, first, maxFirst, viewport, track, thumb, amount };
 }

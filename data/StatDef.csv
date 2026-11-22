@@ -9,7 +9,7 @@ CritFactor,1,Warrior|Assassin|Barbarian|Summoner|Mage,20,0.15,100,-1,-1,-1,false
 HealthRegen,1,All,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 CooldownReduction,1,All,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 Range,1,Priest|Summoner|Mage,20,0.15,100,12,25,300,false,Spec COMBAT-HOOKS 8b: +25 units per rank cap +300 (flat arena units); maxrank 12 derived
-HealPower,1,Priest,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+HealPower,1,Priest|Summoner,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 SpiritDamage,1,Summoner,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 SpiritDuration,1,Summoner,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 EssencePerKill,1,PartyWide,20,0.15,100,10,10,100,false,Percent: +10 per rank cap +100 (about 10 ranks)
