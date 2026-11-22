@@ -70,6 +70,11 @@ export interface CombatConfig {
   autoSpeedMult: Map<string, number>;
   abilityPowerMult: Map<string, number>;
   abilityCooldownMult: Map<string, number>;
+  /** Testing menu: ability cast time x, by ability name (only abilities with a cast time in abilityCastTimes). */
+  abilityCastMult: Map<string, number>;
+  /** Testing menu: a healer's Heal (not its Searing Light smite), by class name: heal amount x and cast speed x. The smite uses autoPowerMult and autoSpeedMult. */
+  autoHealMult: Map<string, number>;
+  autoHealSpeedMult: Map<string, number>;
   eliteWindupFactor: number;
   tankMeleeFirstRange: number;
   castTimeScale: number;
@@ -102,6 +107,8 @@ export interface CombatConfig {
   greaterSpiritHealScale: number;
   /** A greater spirit that outlives a won fight waits (duration and recast cooldown paused) for the next one. Off keeps the C++ parity behaviour. */
   greaterSpiritPersists: boolean;
+  /** A party healer only holds position for an ally who needs a heal (below its smite threshold); otherwise it closes on its target to smite. */
+  healerSmitesWhenIdle: boolean;
   readyAtStartAbilities: string[];
   logCapacity: number;
 }
@@ -150,6 +157,9 @@ export function defaultCombatConfig(): CombatConfig {
     autoSpeedMult: new Map(),
     abilityPowerMult: new Map(),
     abilityCooldownMult: new Map(),
+    abilityCastMult: new Map(),
+    autoHealMult: new Map(),
+    autoHealSpeedMult: new Map(),
     eliteWindupFactor: 1.5,
     tankMeleeFirstRange: 300.0,
     castTimeScale: 1.0,
@@ -178,6 +188,7 @@ export function defaultCombatConfig(): CombatConfig {
     spiritHealIdleRadius: 80.0,
     greaterSpiritHealScale: 1.5,
     greaterSpiritPersists: false,
+    healerSmitesWhenIdle: false,
     readyAtStartAbilities: ['Taunt'],
     logCapacity: 4096,
   };
@@ -196,6 +207,9 @@ export function cloneCombatConfig(c: CombatConfig): CombatConfig {
     autoSpeedMult: new Map(c.autoSpeedMult),
     abilityPowerMult: new Map(c.abilityPowerMult),
     abilityCooldownMult: new Map(c.abilityCooldownMult),
+    abilityCastMult: new Map(c.abilityCastMult),
+    autoHealMult: new Map(c.autoHealMult),
+    autoHealSpeedMult: new Map(c.autoHealSpeedMult),
     readyAtStartAbilities: [...c.readyAtStartAbilities],
   };
 }
@@ -1397,13 +1411,14 @@ export class CombatSim {
       else return g;
     }
     if (u.behavior === Behavior.Backline) {
-      const hurt = this.lowestHpAlly(u, false);
+      let hurt = this.lowestHpAlly(u, false);
+      if (hurt && this.cfg.healerSmitesWhenIdle && !u.enemy && hurt.hp / this.maxHp(hurt) >= u.smiteThreshold) hurt = undefined;   // nobody needs a heal: go smite
       if (hurt && dist(u, hurt) > range) { // keep the lowest-HP ally inside Range
         const a = CombatSim.away(u, hurt);
         return { x: hurt.x + a.dx * range * this.cfg.standoffFactor, y: hurt.y + a.dy * range * this.cfg.standoffFactor };
       }
       // The party healer holds its position with nobody hurt; enemy healers keep the generic approach below.
-      if (hurt || !u.enemy) return undefined;
+      if (hurt || (!u.enemy && !this.cfg.healerSmitesWhenIdle)) return undefined;
     }
     const bound = u.prefMax > 0.0 ? Math.min(u.prefMax, range) : range;
     const dt2 = dist(u, tgt);
@@ -1487,9 +1502,9 @@ export class CombatSim {
       if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold) {
         if (dist(u, hurt) > range) return; // waiting to get the ally into Range
         if (!bound) u.attackTimer -= interval;
-        const power = (bound ? this.autoCastPower(u) : 1.0) * this.autoPower(u);
+        const power = (bound ? this.autoCastPower(u) : 1.0) * (this.cfg.autoHealMult.get(u.name) ?? 1.0);   // the Heal has its own tuning, apart from the smite's autoPower
         const healBase = kHealBase * u.autoHealScale * u.healFloorMult * power;
-        const w = bound ? this.autoCastTime(u) : this.autoWindup(u);
+        const w = bound ? this.autoCastTime(u, true) : this.autoWindup(u);
         if (w > 0.0) { this.startCast(u, CastKind.AutoHeal, w, hurt.id, 0, healBase); return; }
         this.applyHeal(u.id, hurt.id, healBase);
         return;
@@ -1634,9 +1649,10 @@ export class CombatSim {
     return base !== undefined && base > 0.0 ? base : 0.0;
   }
   /** Seconds one auto cast takes now: base x (class base AttackSpeed / current AttackSpeed), so AttackSpeed upgrades act as cast speed. */
-  private autoCastTime(u: Unit): number {
+  private autoCastTime(u: Unit, healing = false): number {
     const baseAs = Math.max(1e-6, u.stats.getBase(StatId.AttackSpeed));
-    return this.cfg.castTimeScale * this.autoCastBase(u) * baseAs / this.speedOf(u);
+    const speed = healing ? u.stats.get(StatId.AttackSpeed) * (this.cfg.autoHealSpeedMult.get(u.name) ?? 1.0) : this.speedOf(u);
+    return this.cfg.castTimeScale * this.autoCastBase(u) * baseAs / speed;
   }
   /** Damage and heal multiplier of a cast-bound auto: base cast time x class base AttackSpeed, so a longer base cast hits harder and the
    *  class's DPS (and healing per second) stays what ClassData says. Not scaled by AttackSpeed or by the testing time scale. */
@@ -1679,7 +1695,7 @@ export class CombatSim {
     if (u.summon) return 0.0;
     const w = this.cfg.abilityCastTimes.get(abilityName);
     if (w === undefined || w <= 0.0) return 0.0;
-    return Math.max(0.0, this.cfg.castTimeScale) * w * (u.elite || u.boss ? this.cfg.eliteWindupFactor : 1.0);
+    return Math.max(0.0, this.cfg.castTimeScale) * w * (this.cfg.abilityCastMult.get(abilityName) ?? 1.0) * (u.elite || u.boss ? this.cfg.eliteWindupFactor : 1.0);
   }
   private startCast(u: Unit, kind: CastKind, seconds: number, target: UnitId, tags: number, heal: number): void {
     u.castKind = kind;
