@@ -16,7 +16,7 @@ import { HudGraphics, type IconName, blueGem, goldGem, icon, kHud, ornatePanel, 
 import { themeById } from '../ui/roomTheme';
 import { kThemeId, roomHaze, type RoomView } from './roomView';
 import { heroLabel } from '../core/heroSheet';
-import { GearSlot, gearKey } from '../core/temple';
+import { GearSlot } from '../core/temple';
 import { readability } from './combatText';
 import { heroFaceKey, spriteSizes } from './heroMotion';
 import { loadTuning, saveTuning } from './localStore';
@@ -837,10 +837,13 @@ export class Hud {
     plate(this.g, r, S, kHud.panel, { edge: kHud.goldLit, sheen: 0.05 });
     this.hit(r, 2, () => undefined);   // clicks on the banner do not reach the room
     const more = pending.length > 1 ? `  (${pending.length - 1} more waiting)` : '';
-    this.texts.centered('gc.title', `Found a ${weapon ? 'weapon' : 'armor'} upgrade (${weapon ? 'Damage' : 'Health'} +10%): who gets it?${more}`,
+    const perm = this.rm.getFlow().permanentGear();
+    const title = item.party
+      ? `Boss reward: every hero's ${weapon ? 'weapon' : 'armor'} upgrades (each on its own chance). Tap to claim${more}`
+      : `Found a ${weapon ? 'weapon' : 'armor'} upgrade (${weapon ? 'Damage' : 'Health'} +10%): who gets it?${more}`;
+    this.texts.centered('gc.title', title,
       new Rect(r.x, r.y + 4 * S, r.w, 26 * S), kBaseFontPx * 1.3 * S, lin(1, 0.92, 0.6));
     const pad = 8 * S, bw = (r.w - pad * (party.length + 1)) / party.length, bh = r.h - 36 * S - pad;
-    const gear = this.rm.getFlow().getDungeonGear();
     party.forEach((u, i) => {
       const b = new Rect(r.x + pad + i * (bw + pad), r.y + 34 * S, bw, bh);
       const hover = b.contains(this.mouse.x, this.mouse.y);
@@ -849,9 +852,12 @@ export class Hud {
       const face = new Rect(b.x + 5 * S, b.y + (b.h - fs) / 2, fs, fs);
       if (!this.face(`gc${i}`, u.name, face, !u.alive)) this.texts.centered(`gc.i${i}`, u.name.slice(0, 1), face, fs * 0.6, 0xffffff, 1, true);
       const tx = new Rect(face.right() + 6 * S, b.y, b.right() - face.right() - 10 * S, b.h);
-      const level = gear.get(gearKey(u.name, item.slot)) ?? 0;
+      const level = this.rm.gearSlotLevel(u.name, item.slot);
+      const chance = this.rm.gearUpgradeChance(u.name, item.slot);
+      const pctText = chance >= 1 ? '100%' : `${Math.max(1, Math.round(chance * 100))}%`;
       this.texts.fit(`gc.n${i}`, heroLabel(u.name), new Rect(tx.x, tx.y + 2 * S, tx.w, tx.h * 0.5), kBaseFontPx * 1.25 * S, kTextLight);
-      this.texts.fit(`gc.l${i}`, `${weapon ? 'Weapon' : 'Armor'} +${level} → +${level + 1}`, new Rect(tx.x, tx.y + tx.h * 0.5, tx.w, tx.h * 0.42), kBaseFontPx * 1.05 * S, kTextDim);
+      this.texts.fit(`gc.l${i}`, `${weapon ? 'Weapon' : 'Armor'} +${level} → +${level + 1}${perm ? `  ${pctText}` : ''}`,
+        new Rect(tx.x, tx.y + tx.h * 0.5, tx.w, tx.h * 0.42), kBaseFontPx * 1.05 * S, !perm || chance >= 1 ? kTextDim : lin(1, 0.78, 0.35));
       const cls = u.name;
       this.hit(b, 3, () => { this.rm.assignPendingGear(cls); this.sideDirty = true; });
     });

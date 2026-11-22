@@ -12,6 +12,7 @@ import { padL } from './printf';
 import { Rng, u64 } from './rng';
 import { cloneRunConfig, defaultRunConfig, type RunConfig } from './runConfig';
 import { endRun, makeRunState, nextFloor, startRun, type RunState } from './runState';
+import { upgradeChance } from './gearUpgrade';
 import { GearSlot, gearKey } from './temple';
 
 export enum RunOutcome { InProgress, Wiped, Abandoned, Victory }
@@ -154,9 +155,9 @@ export function formatRoomLine(floor: number, node: number, room: string, result
 }
 
 export interface PartyLuck { essencePerKill: number; essencePerRoom: number; goldPerKill: number; goldPerRoom: number }
-export interface GearDrop { className: string; slot: GearSlot; dungeonLevel: number }
+export interface GearDrop { className: string; slot: GearSlot; dungeonLevel: number; /** false when a permanent upgrade's roll failed (dungeonLevel is then the unchanged level). */ landed: boolean }
 /** A found piece of gear waiting for the player to pick a hero. `suggested` is the hero the old random roll picked (what Auto gives it to). */
-export interface PendingGear { slot: GearSlot; suggested: string }
+export interface PendingGear { slot: GearSlot; suggested: string; /** Boss reward: every hero gets the upgrade, each on their own chance. */ party?: boolean }
 
 const FIGHT_SEED_MUL = 0xa24baed4963ee407n;
 const GEAR_SEED_XOR = 0x6ea2d40f5eedc0den;
@@ -184,6 +185,8 @@ export class RunFlow {
   private dungeonGear = new Map<string, number>();
   private drops: GearDrop[] = [];
   private gearChoice = false;
+  /** Permanent gear mode (live game): upgrades are permanent levels kept in this map (the MetaSave's), rolled against upgradeChance. */
+  private permGear: Map<string, number> | undefined;
   private pendingGear: PendingGear[] = [];
   private gearRng = new Rng(0);
   private builtSize: FloorSize;
@@ -387,11 +390,26 @@ export class RunFlow {
   /** Choice mode (the live game): found gear waits for the player to pick a hero instead of going to a random one. Off keeps the
    *  random hero, which the soaks and the Unreal parity rely on. The rolls are drawn either way, so the random stream never changes. */
   setGearChoice(on: boolean): void { this.gearChoice = on; }
+  /** Permanent gear mode: pass the meta's gear level map (mutated on a successful upgrade) or undefined for the old temporary dungeon levels. */
+  setPermanentGear(levels: Map<string, number> | undefined): void { this.permGear = levels; }
+  permanentGear(): boolean { return this.permGear !== undefined; }
+  /** Levels gained so far in this slot (permanent mode: the meta's; otherwise the Temple level is the caller's to add). */
+  permanentLevel(className: string, slot: GearSlot): number { return Math.max(0, this.permGear?.get(gearKey(className, slot)) ?? 0); }
+  /** Chance an upgrade to this slot lands on the floor the party is on (1 outside permanent mode). */
+  upgradeChanceFor(className: string, slot: GearSlot): number {
+    return this.permGear ? upgradeChance(this.permanentLevel(className, slot), this.run.floorNumber) : 1;
+  }
   getPendingGear(): readonly PendingGear[] { return this.pendingGear; }
   /** Gives the pending piece `index` to `className` (a hero in the party). Returns false, changing nothing, for a bad index or hero. */
   assignGear(index: number, className: string): boolean {
     const p = this.pendingGear[index];
-    if (!p || !this.run.party.includes(className)) return false;
+    if (!p) return false;
+    if (p.party) {   // the boss reward: everyone, each on their own chance (fallen heroes too)
+      this.pendingGear.splice(index, 1);
+      for (const c of this.run.party) this.applyGear(c, p.slot);
+      return true;
+    }
+    if (!this.run.party.includes(className)) return false;
     this.pendingGear.splice(index, 1);
     this.applyGear(className, p.slot);
     return true;
@@ -473,7 +491,7 @@ export class RunFlow {
       default: gold = this.cfg.goldCombat; break;
     }
     this.pay(RunFlow.scaled(gold, this.luck.goldPerRoom));
-    if (this.pending.room === RoomType.Elite || this.pending.room === RoomType.Boss) this.dropGear();
+    if (this.pending.room === RoomType.Elite || this.pending.room === RoomType.Boss) this.dropGear(this.pending.room === RoomType.Boss);
   }
 
   teleport(): TeleportResult {
@@ -515,18 +533,33 @@ export class RunFlow {
   static scaled(base: number, bonus: number): number {
     return base <= 0 ? base : Math.trunc(lround(base * (1.0 + (bonus < 0 ? 0.0 : bonus))));
   }
-  private dropGear(): void {
+  private dropGear(boss = false): void {
     if (this.run.party.length === 0) return;
-    const className = this.run.party[this.gearRng.nextInt(0, this.run.party.length - 1)];
+    let className = this.run.party[this.gearRng.nextInt(0, this.run.party.length - 1)];
     const slot = this.gearRng.nextInt(0, 1) === 0 ? GearSlot.Weapon : GearSlot.Armor;
-    if (this.gearChoice) this.pendingGear.push({ slot, suggested: className });
+    if (this.permGear) {   // Auto's pick: the hero with the best chance, then the lowest level
+      for (const c of this.run.party) {
+        const better = this.upgradeChanceFor(c, slot) - this.upgradeChanceFor(className, slot);
+        if (better > 1e-9 || (Math.abs(better) <= 1e-9 && this.permanentLevel(c, slot) < this.permanentLevel(className, slot))) className = c;
+      }
+    }
+    const party = boss && this.permGear !== undefined;
+    if (this.gearChoice) this.pendingGear.push({ slot, suggested: className, ...(party ? { party: true } : {}) });
+    else if (party) for (const c of this.run.party) this.applyGear(c, slot);
     else this.applyGear(className, slot);
   }
   private applyGear(className: string, slot: GearSlot): void {
     const key = gearKey(className, slot);
+    if (this.permGear) {
+      const cur = this.permanentLevel(className, slot);
+      const landed = this.gearRng.nextDouble() < this.upgradeChanceFor(className, slot);
+      if (landed) this.permGear.set(key, cur + 1);
+      this.drops.push({ className, slot, dungeonLevel: landed ? cur + 1 : cur, landed });
+      return;
+    }
     const level = (this.dungeonGear.get(key) ?? 0) + 1;
     this.dungeonGear.set(key, level);
-    this.drops.push({ className, slot, dungeonLevel: level });
+    this.drops.push({ className, slot, dungeonLevel: level, landed: true });
   }
   private pay(gold: number): void {
     if (gold <= 0) return;

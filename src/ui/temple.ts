@@ -143,6 +143,7 @@ const kCss = `
 .tp-card .cost svg { width: 1.05em; height: 1.05em; color: #ffd36b; fill: #ffd36b; }
 .tp-card:not(.buy) .cost { color: #a39a90; } .tp-card:not(.buy) .cost svg { color: #8d8478; fill: #8d8478; }
 .tp-card.max .cost { color: #b9f0b0; }
+.tp-card.gained { opacity: 1; } .tp-card.gained .cost { color: #b9f0b0; font-size: 1.15em; } .tp-card.gained:disabled { color: inherit; }
 .tp-rows { max-width: 34em; }
 .tp-row { display: flex; justify-content: space-between; gap: 24px; font-size: clamp(13px, 2.4vh, 21px); padding: 3px 0; color: #d6cbbd;
   border-bottom: 1px solid rgba(232, 200, 119, 0.18); }
@@ -326,16 +327,17 @@ function itemIcon(it: TempleItem): string {
 
 function itemCard(it: TempleItem, buy: (id: string) => void): HTMLButtonElement {
   const unlock = it.maxLevel <= 1;
-  const b = el('button', `tp-card${it.canBuy ? ' buy' : ''}${it.maxed ? ' max' : ''}${unlock ? ' unlock' : ''}`);
+  const b = el('button', `tp-card${it.canBuy ? ' buy' : ''}${it.maxed ? ' max' : ''}${unlock ? ' unlock' : ''}${it.gained ? ' gained' : ''}`);
   b.type = 'button';
   const ic = el('span', 'ic');
   ic.appendChild(icon(itemIcon(it)));
   const cost = el('span', 'cost');
-  if (it.maxed) cost.textContent = unlock ? 'Owned' : 'MAX';
+  if (it.gained) cost.textContent = `+${it.level}`;
+  else if (it.maxed) cost.textContent = unlock ? 'Owned' : 'MAX';
   else cost.append(icon('faith'), formatCount(it.cost));
   b.title = `${it.label}: ${it.detail}`;   // the full text when the card cuts it short
   const side = el('span', 'side');
-  side.append(el('span', 'lv', unlock ? '' : `Lv ${it.level}/${it.maxLevel}`), cost);
+  side.append(el('span', 'lv', unlock || it.gained ? '' : `Lv ${it.level}/${it.maxLevel}`), cost);
   b.append(ic, el('span', 'nm', it.label), el('span', 'ds', it.detail), side);
   if (it.canBuy) b.addEventListener('click', (ev) => { ev.stopPropagation(); buy(it.id); });
   else b.disabled = true;
