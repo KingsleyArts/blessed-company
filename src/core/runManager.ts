@@ -155,9 +155,11 @@ export interface RunManagerOptions {
   enemyMult: number;
   /** tol.CastTimes 1 (shipped). */
   castTimes: boolean;
+  /** The game's start (director, Nov 21): the Priestess is owned from the start and there is no rescue. Off for the Unreal parity rules. */
+  priestFromStart: boolean;
 }
 
-export const makeRunManagerOptions = (over: Partial<RunManagerOptions> = {}): RunManagerOptions => ({ enemyMult: 1.3, castTimes: true, ...over });
+export const makeRunManagerOptions = (over: Partial<RunManagerOptions> = {}): RunManagerOptions => ({ enemyMult: 1.3, castTimes: true, priestFromStart: false, ...over });
 
 /** The test setup of the next playable run (one shot): start floor and the Priest already in the party (tol.NextRun). */
 export interface NextRunSetup { startFloor: number; priest: boolean }
@@ -306,10 +308,22 @@ export class RunManager {
     this.flow.setFloorSize(this.floorSize);
   }
 
+  /** Gives this save the Priestess, in the party if a slot is free. Never during a run: an older saved run keeps the rules it began with. */
+  grantStartingPriest(): void {
+    if (!this.opts.priestFromStart || this.flow.active()) return;
+    this.ensureMetaLoaded();
+    if (this.meta.priestUnlocked) return;
+    this.meta.priestUnlocked = true;
+    if (!activeParty(this.meta).includes(rosterPriestClass()) && activeParty(this.meta).length < kActiveSlots) toggleActiveHero(this.meta, rosterPriestClass());
+    this.saveMeta();
+  }
+
   private flowStart(seed: number, testSetup: boolean): void {
     this.flow = new RunFlow();
     if (this.floorSize) this.flow.setFloorSize(this.floorSize);
     this.ensureMetaLoaded();
+    this.grantStartingPriest();
+    if (this.opts.priestFromStart) this.flow.setPriestStart(this.meta.bestFloor < 2);
     this.applyMetaToFlow();
     this.flow.setStartParty(activeParty(this.meta));
     this.flow.setPriestOwned(this.meta.priestUnlocked);

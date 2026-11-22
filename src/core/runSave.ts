@@ -84,6 +84,7 @@ export function parseRunSave(text: string | undefined): RunCheckpoint | undefine
   }
   const floorSize = floorSizeField(f.floorSize);
   if (floorSize === null) return undefined;
+  if (f.priestStartTutorial !== undefined && !isBool(f.priestStartTutorial)) return undefined;
   if (!Array.isArray(r.units) || !isNum(r.gauge)) return undefined;
   const units: SavedUnit[] = [];
   for (const u of r.units as unknown[]) {
@@ -95,6 +96,7 @@ export function parseRunSave(text: string | undefined): RunCheckpoint | undefine
   return {
     flow: {
       ...(floorSize ? { floorSize } : {}),
+      ...(f.priestStartTutorial === undefined ? {} : { priestStartTutorial: f.priestStartTutorial }),
       seed, gearRng,
       floorNumber: f.floorNumber, currentNode: f.currentNode, party: [...(f.party as string[])], gold: f.gold, essence: f.essence,
       revealed: f.revealed, known: f.known, cleared: f.cleared,

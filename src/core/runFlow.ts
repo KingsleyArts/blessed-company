@@ -57,6 +57,8 @@ const kOldSaveFloorSize: FloorSize = { min: 10, max: 20, tutorialMin: 5, tutoria
 export interface FlowCheckpoint {
   /** The size the current floor was built with, so a resume rebuilds the same floor whatever the setting is now. */
   floorSize?: FloorSize;
+  /** Priestess-from-the-start runs: whether floor 1 is the small first floor. Absent in older saves, which keep the rescue rules. */
+  priestStartTutorial?: boolean;
   seed: bigint;
   floorNumber: number;
   currentNode: number;
@@ -179,6 +181,7 @@ export class RunFlow {
   private drops: GearDrop[] = [];
   private gearRng = new Rng(0);
   private builtSize: FloorSize;
+  private priestStart: boolean | undefined;   // undefined: the original rescue rules (soaks, parity, older saves)
 
   constructor(config: RunConfig = defaultRunConfig()) {
     this.cfg = cloneRunConfig(config);
@@ -191,6 +194,8 @@ export class RunFlow {
   setStartParty(party: readonly string[]): void { this.cfg.startParty = [...party]; }
   /** The Priestess is owned (rescued in an earlier run) but may be benched: floors are generated as if she were in the party. */
   setPriestOwned(owned: boolean): void { this.priestOwned = owned; }
+  /** The Priestess is in from the start (director, Nov 21): no rescue floor. `firstFloorSmall` keeps the small first floor. */
+  setPriestStart(firstFloorSmall: boolean): void { this.priestStart = firstFloorSmall; }
   /** Testing builds: the size of floors built from now on. The current floor keeps its layout. */
   setFloorSize(s: FloorSize): void { this.cfg.floor = withFloorSize(this.cfg.floor, s); }
 
@@ -226,6 +231,7 @@ export class RunFlow {
     const nodes = this.run.floor.nodes;
     return {
       floorSize: { ...this.builtSize },
+      ...(this.priestStart === undefined ? {} : { priestStartTutorial: this.priestStart }),
       seed: this.run.seed,
       floorNumber: this.run.floorNumber,
       currentNode: this.run.currentNode,
@@ -255,12 +261,13 @@ export class RunFlow {
   restore(cp: FlowCheckpoint): boolean {
     if (cp.floorNumber < 1 || cp.party.length === 0) return false;
     const size = cp.floorSize ?? kOldSaveFloorSize;
-    const floor = generate(cp.seed, cp.floorNumber, withFloorSize(this.floorConfig(cp.party.includes(this.cfg.rescueClass)), size));
+    const floor = generate(cp.seed, cp.floorNumber, withFloorSize(this.floorConfig(cp.party.includes(this.cfg.rescueClass), cp.priestStartTutorial), size));
     const n = floor.nodes.length;
     const inRange = (ids: readonly number[]): boolean => ids.every((i) => Number.isInteger(i) && i >= 0 && i < n);
     if (!Number.isInteger(cp.currentNode) || cp.currentNode < 0 || cp.currentNode >= n) return false;
     if (!inRange(cp.revealed) || !inRange(cp.known) || !inRange(cp.cleared)) return false;
     this.builtSize = { ...size };
+    this.priestStart = cp.priestStartTutorial;
     const run = this.run;
     Object.assign(run, makeRunState());
     run.seed = cp.seed;
@@ -470,7 +477,9 @@ export class RunFlow {
   }
 
   // ---- private ----
-  private floorConfig(hasPriest: boolean): Config {
+  private floorConfig(hasPriest: boolean, priestStart = this.priestStart): Config {
+    // The generator's small first floor is keyed on hasPriest being false; with no rescue floor that flag means only that.
+    if (priestStart !== undefined) return { ...this.cfg.floor, rescueFloor: 0, hasPriest: !priestStart };
     return { ...this.cfg.floor, hasPriest: hasPriest || this.priestOwned };
   }
   private resetFloorState(): void {
