@@ -201,7 +201,9 @@ describe('combat: Warrior Cleave (second ability slot)', () => {
     NEAR(s.threatOn(g3, w), 0, 1e-9);
   });
   it('CleaveThreatFollowsDamageRuleThenFlatBonusOnEachHitEnemy', () => {
-    const s = new CombatSim(data, 1);
+    const withFlat = cloneData();   // the shipped Cleave is damage only since Nov 22; the flat-threat effect row is kept and proven here
+    withFlat.findAbility('Cleave')!.EffectIds = ['Cleave_1', 'Cleave_2'];
+    const s = new CombatSim(withFlat, 1);
     const w = s.addPartyUnit('Warrior');
     grantCleave(s, w);
     const m = s.addPartyUnit('Mage');
