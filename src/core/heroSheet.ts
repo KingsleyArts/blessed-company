@@ -64,10 +64,10 @@ export function rolePriority(role: string): number {
  *  drift from the tuning). Unknown ids fall back to the id itself. */
 const kSkillText: Record<string, [string, string]> = {
   MeleeStrike: ['Sword Strike', 'A steady melee attack.'],
-  HealOrSmite: ['Light', 'Heals the most hurt ally, or strikes an enemy when no one needs healing.'],
+  HealOrSmite: ['Searing Light', 'A cast that heals the most hurt ally the moment it finishes, or sends a bolt of light at an enemy when no one needs healing.'],
   FastMelee: ['Twin Blades', 'Quick melee attacks.'],
   MeleeSwing: ['Heavy Swing', 'A strong melee attack.'],
-  RangedBolt: ['Arcane Bolt', 'A ranged magic attack.'],
+  RangedBolt: ['Arcane Shot', 'A ranged magic attack: the cast takes a moment, then the bolt flies to the target.'],
   Taunt: ['Taunt', 'Puts the Warrior at the top of every enemy\'s threat and forces them all to attack the Warrior for a few seconds, taking less damage meanwhile.'],
   Cleave: ['Cleave', 'Hits every enemy close by, holding their attention.'],
   GroupHeal: ['Prayer of Mending', 'Heals the whole party.'],

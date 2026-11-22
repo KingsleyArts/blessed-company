@@ -1,6 +1,6 @@
 // Scripted combat scenarios: the TS twin of Run() in tools/golden/dump_combat.cpp. Keep both in step. Used by the combat parity
 // test (spec-tests/combat) and handy for debugging a fight from a definition.
-import { installShippedCastTimes } from './castTimes';
+import { installLegacyCastTimes } from './castTimes';
 import type { CombatData } from './combatData';
 import { CombatSim, FightState, defaultCombatConfig } from './combatSim';
 import { parseTargetType, parseTriggerMode } from './combatData';
@@ -46,7 +46,7 @@ export function doubleBits(v: number): string {
 export function runScenario(data: CombatData, sc: ScenarioDef): ScenarioResult {
   const cfg = defaultCombatConfig();
   cfg.logCapacity = 1 << 22;
-  if (sc.castTimes) installShippedCastTimes(cfg);
+  if (sc.castTimes) installLegacyCastTimes(cfg); // the C++ table the fixtures were recorded with
   cfg.randomEnemySpawn = sc.randomSpawn;
   cfg.enemyStatMult = sc.enemyStatMult;
   const sim = new CombatSim(data, BigInt(sc.seed), cfg);

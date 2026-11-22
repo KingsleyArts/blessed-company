@@ -8,7 +8,7 @@
 //   * after a won non-boss fight PostWinRevive; `fullheal` (debug) restores the whole party after every win
 //   * the Exit room revives every fallen unit at 20 percent
 //   * after each run, `temple`: BotVisitTemple (cheapest affordable gear / stat item first, Party Luck excluded, up to 600 buys)
-import { installShippedCastTimes } from './castTimes';
+import { installLegacyCastTimes, installShippedCastTimes } from './castTimes';
 import type { CombatData } from './combatData';
 import { CombatSim, FightState, defaultCombatConfig, type CombatConfig } from './combatSim';
 import { kNoUnit } from './eventBus';
@@ -35,6 +35,10 @@ export interface AutoRunParams {
   enemyMult: number;
   /** tol.CastTimes 1 (the Unreal default) installs the shipped cast times. */
   castTimes: boolean;
+  /** Install the Nov 18 (Unreal) cast-time table instead of the shipped one: the 3164-run parity soak and A/B comparisons use it. */
+  legacyCastTimes: boolean;
+  /** Test hook: adjust the combat config after the cast times are installed (A/B experiments in the soak). */
+  tweakConfig?: (cfg: CombatConfig) => void;
   noBuy: boolean;
   temple: boolean;
   fresh: boolean;
@@ -42,7 +46,7 @@ export interface AutoRunParams {
 }
 
 export const makeAutoRunParams = (over: Partial<AutoRunParams> = {}): AutoRunParams => ({
-  seed: 1, maxRuns: 40, enemyMult: 1.3, castTimes: true, noBuy: false, temple: false, fresh: true, fullHeal: false, ...over,
+  seed: 1, maxRuns: 40, enemyMult: 1.3, castTimes: true, legacyCastTimes: false, noBuy: false, temple: false, fresh: true, fullHeal: false, ...over,
 });
 
 export interface TempleVisit {
@@ -100,8 +104,9 @@ export class AutoRunSession {
   private combatConfig(): CombatConfig {
     const cfg = defaultCombatConfig();
     cfg.enemyStatMult = Math.fround(this.params.enemyMult);
-    if (this.params.castTimes) installShippedCastTimes(cfg);
+    if (this.params.castTimes) (this.params.legacyCastTimes ? installLegacyCastTimes : installShippedCastTimes)(cfg);
     cfg.randomEnemySpawn = true;
+    this.params.tweakConfig?.(cfg);
     return cfg;
   }
 

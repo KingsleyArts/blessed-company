@@ -298,9 +298,13 @@ describe('combat: cast times and windups', () => {
     CHECK(plain.autoWindups.size === 0 && plain.abilityCastTimes.size === 0);
     const shipped = defaultCombatConfig();
     installShippedCastTimes(shipped);
-    NEAR(shipped.abilityCastTimes.get('GroupHeal')!, 1.5, 1e-9);
-    CHECK(!shipped.abilityCastTimes.has('Taunt') && !shipped.abilityCastTimes.has('Rage'));
+    // Nov 21: GroupHeal is instant (it fires between the Priestess's auto casts); Mage and Priest are cast-bound, not windups.
+    CHECK(!shipped.abilityCastTimes.has('GroupHeal') && !shipped.abilityCastTimes.has('Taunt') && !shipped.abilityCastTimes.has('Rage'));
+    NEAR(shipped.abilityCastTimes.get('Fireball')!, 1.2, 1e-9);
     CHECK(shipped.autoWindups.get('Warrior')! > 0 && shipped.autoWindups.get('Grunt')! > 0);
+    CHECK(!shipped.autoWindups.has('Mage') && !shipped.autoWindups.has('Priest'));
+    CHECK(shipped.autoCastTimes.get('Mage')! > 0 && shipped.autoCastTimes.get('Priest')! > 0);
+    CHECK(shipped.projectileSpeed > 0 && shipped.projectileUnits.includes('Mage'));
   });
   it('TuningScalesCastTimesAndPartyHealing', () => {
     const cfg = defaultCombatConfig();
