@@ -615,6 +615,10 @@ export class Hud {
         const p = this.rm.previewBuy(s.characterIndex, row.stat, amount);
         if (p.bought > 0) { cost = p.spent; bought = p.bought; }
       }
+      if (amount > 1 && bought < amount && (row.maxRank <= 0 || row.rank < row.maxRank)) {   // can't afford the full selection: still show its full price
+        const p = this.rm.previewBuy(s.characterIndex, row.stat, amount, 1e18);
+        if (p.bought > 0) cost = p.spent;
+      }
       this.previewCost.push(cost);
       this.previewBought.push(bought);
     }
@@ -674,8 +678,8 @@ export class Hud {
       const on = row.canBuy && full;
       const hover = on && R.button.contains(this.mouse.x, this.mouse.y);
       plate(this.g, R.button, S, on ? 0x7a5a24 : kHud.steel, { edge: on ? (hover ? kHud.goldLit : kHud.gold) : 0x6a6370, radius: 3 * S, sheen: on ? 0.16 : 0.08 });
-      const cost = on ? this.previewCost[i] ?? row.nextCost : row.nextCost;
-      const bought = on ? this.previewBought[i] ?? 0 : 0;
+      const cost = this.previewCost[i] ?? row.nextCost;
+      const bought = on && want < 0 ? this.previewBought[i] ?? 0 : 0;   // the count only matters for Max; x1/x10/x100 already say it
       const label = formatBuyButton(max, cost, bought);
       const ic = max ? 0 : 0.38 * R.button.h;
       const t = this.texts.at(`es.b${k}`, label, 0, 0, kBaseFontPx * 1.45 * S, on ? lin(1, 0.97, 0.88) : kTextDim, 0, 0.5);

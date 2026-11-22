@@ -977,9 +977,10 @@ export class RunManager {
     return r;
   }
 
-  previewBuy(ch: number, stat: string, amount: number): BuyResult {
+  /** What buying `amount` would do; `essence` overrides the run's Essence (pass Infinity for the full price regardless of what is affordable). */
+  previewBuy(ch: number, stat: string, amount: number, essence?: number): BuyResult {
     if (!this.flow.active()) return { bought: 0, spent: 0, newRank: 0, refusal: BuyRefusal.NoCharacter, reason: 'No run in progress' };
-    return this.flow.getSidebar().preview(ch, stat, amount, this.flow.getRun().essence);
+    return this.flow.getSidebar().preview(ch, stat, amount, essence ?? this.flow.getRun().essence);
   }
 
   // ------------------------------------------------------------------------------------------ miracles (the HUD calls these)
