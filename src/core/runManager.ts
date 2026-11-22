@@ -22,6 +22,7 @@ import { kMetaMaxGold, makeMeta, parseMeta, resetProgress, serializeMeta, type M
 import { MiracleKind, MiracleResult } from './miracleGauge';
 import { RosterResult, activeParty, kActiveSlots, rosterIsActive, rosterOwns, rosterPriestClass, toggleActiveHero } from './roster';
 import { RunBot } from './runBot';
+import type { AutoMode } from './runAuto';
 import { RunStats, type DamageReport, type RoomDamage } from './runStats';
 import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, roomTypeName, runOutcomeName, type PendingGear, type RoomEntry, type RunResults } from './runFlow';
 import { buildMapView, type MapView } from './runMapView';
@@ -297,8 +298,6 @@ export class RunManager {
   }
 
   private syncMeta(): void {
-    // Auto does not stop to ask: it gives each piece to the hero the old random roll picked.
-    if (this.auto) for (let p = this.flow.getPendingGear()[0]; p; p = this.flow.getPendingGear()[0]) if (!this.flow.assignGear(0, p.suggested)) break;
     let changed = false;
     const gold = this.flow.consumeGoldDelta();
     if (gold !== 0) {
@@ -389,6 +388,8 @@ export class RunManager {
     cfg.enemyStatMult = Math.fround(this.opts.enemyMult);
     if (this.opts.castTimes) installShippedCastTimes(cfg);
     cfg.randomEnemySpawn = true;
+    cfg.swingAbilities = ['Cleave'];   // Warrior Cleave replaces a swing instead of casting on its own
+    cfg.lastHealerAttacks = true;   // a lone Shaman attacks instead of healing itself
     cfg.healerSmitesWhenIdle = true;   // a Priest with nobody to heal closes in and casts Searing Light
     cfg.greaterSpiritPersists = true;   // a Greater Spirit waits out the gap between fights
     return cfg;
@@ -700,6 +701,10 @@ export class RunManager {
     this.finishRun();
   }
 
+  /** What Auto optimizes (the HUD's shield / scales / swords buttons); balanced until chosen. */
+  autoMode: AutoMode = 'balanced';
+  setAutoMode(m: AutoMode): void { this.autoMode = m; }
+
   setAuto(on: boolean): void {
     if (on) {
       if (!this.flow.active() || this.auto) return;
@@ -734,7 +739,7 @@ export class RunManager {
       return false;
     }
     // Nov 14: the Auto button never spends Gold (buying upgrades stays the player's input); only the soak bot does.
-    const choice = this.bot.choose(this.flow, this.sim ? partyHpFraction(this.sim) : 1.0);
+    const choice = this.bot.choose(this.flow, this.sim ? partyHpFraction(this.sim) : 1.0, this.autoMode);
     if (choice.teleport) {
       // Unreal returns false here and waits for the new floor's start-room fight to schedule the next step. A start room with an
       // empty pack has no fight, so Unreal's Auto stalled there; keep stepping when no fight is pending (fix noted in the Stage 4 report).

@@ -16,6 +16,13 @@ export interface AutoParams {
   costRescue: number;
   costOther: number;
 }
+/** What the Auto button optimizes (director, Nov 22); undefined keeps the original Unreal behaviour the parity soaks pin.
+ *  safe: kill quota and the next floor above all else; never a treasure detour, never an optional Elite.
+ *  balanced: quota first, Elites avoided, Treasure grabbed when no Elite fight is involved, then the next floor.
+ *  greedy: clear the whole floor before leaving, nearest room first (adjacent rooms, then anything nearby), ties Treasure, Combat, Elite. */
+export type AutoMode = 'safe' | 'balanced' | 'greedy';
+export const kAutoModes: AutoMode[] = ['safe', 'balanced', 'greedy'];
+
 export const defaultAutoParams = (): AutoParams => ({ costVisited: 1, costFight: 10, costElite: 200, costRescue: 10, costOther: 2 });
 
 export enum AutoAction { None, Teleport, Move }
@@ -93,10 +100,32 @@ function autoBestUnvisited(flow: RunFlow, dist: number[], pred: (n: Node) => boo
   return best;
 }
 
+/** Greedy Auto: the nearest unvisited room (every room costs one step, so adjacent rooms come first), ties Treasure, Combat, Elite, Boss last.
+ *  Undefined when every known room has been visited. */
+function greedyChoice(flow: RunFlow): AutoDecision | undefined {
+  const f = flow.currentFloor();
+  const { dist, prev } = autoSearch(flow, { costVisited: 1, costFight: 1, costElite: 1, costRescue: 1, costOther: 1 });
+  const rank = (n: Node): number => n.type === RoomType.Treasure ? 0 : n.type === RoomType.Elite ? 2 : n.type === RoomType.Boss ? 3 : 1;
+  let best = -1;
+  for (const n of f.nodes) {
+    if (n.revealed || !n.known || dist[n.id] === INT_MAX) continue;
+    if (best < 0 || dist[n.id] < dist[best] || (dist[n.id] === dist[best] && rank(n) < rank(f.nodes[best]))) best = n.id;
+  }
+  if (best < 0) return undefined;
+  let step = best;
+  while (prev[step] !== flow.currentNode() && prev[step] >= 0) step = prev[step];
+  const t = f.nodes[best].type;
+  return { action: AutoAction.Move, step, target: best, reason: t === RoomType.Treasure ? AutoReason.Treasure : t === RoomType.Combat || t === RoomType.Boss ? AutoReason.Fight : AutoReason.Explore };
+}
+
 /** partyHpFraction is kept for the call sites (unused: there is no Rest room). */
-export function chooseAuto(flow: RunFlow, _partyHpFraction: number, p: AutoParams = defaultAutoParams()): AutoDecision {
+export function chooseAuto(flow: RunFlow, _partyHpFraction: number, p: AutoParams = defaultAutoParams(), mode?: AutoMode): AutoDecision {
   const out: AutoDecision = { action: AutoAction.None, step: -1, target: -1, reason: AutoReason.None };
   if (!flow.active() || flow.fightPending()) return out;
+  if (mode === 'greedy') {
+    const g = greedyChoice(flow);
+    if (g) return g;   // nothing left to clear: fall through to the crystal and the teleport
+  }
   if (flow.canTeleport()) {
     out.action = AutoAction.Teleport;
     out.reason = AutoReason.Teleport;
@@ -114,7 +143,8 @@ export function chooseAuto(flow: RunFlow, _partyHpFraction: number, p: AutoParam
   };
   const any = (): boolean => true;
 
-  if (target < 0 && !flow.quotaMet()) {
+  const calm = mode === 'safe' || mode === 'balanced';   // Elites are a last resort for these
+  if (target < 0 && !flow.quotaMet() && mode !== 'safe') {
     for (const a of flow.adjacent()) {
       const n = f.nodes[a];
       if (n.type === RoomType.Treasure && !n.revealed) {
@@ -128,10 +158,12 @@ export function chooseAuto(flow: RunFlow, _partyHpFraction: number, p: AutoParam
     if (r.known && !r.revealed && dist[r.id] !== INT_MAX) pick(r.id, AutoReason.Rescue);
     else pick(autoBestUnvisited(flow, dist, any), AutoReason.ExploreForRescue);
   }
+  if (target < 0 && flow.quotaMet() && mode === 'balanced') pick(autoBestUnvisited(flow, dist, (n) => n.type === RoomType.Treasure), AutoReason.Treasure);   // a treasure room never means an Elite fight
   if (target < 0 && flow.quotaMet()) {
     if (flow.isCrystalFound() && flow.currentNode() !== f.crystalNode && dist[f.crystalNode] !== INT_MAX) {
       pick(f.crystalNode, AutoReason.Crystal);
     } else if (!flow.isCrystalFound()) {
+      if (calm) pick(autoBestUnvisited(flow, dist, (n) => n.type !== RoomType.Elite || n.isRescueRoom), AutoReason.ExploreForCrystal);
       pick(autoBestUnvisited(flow, dist, any), AutoReason.ExploreForCrystal);
     }
   }

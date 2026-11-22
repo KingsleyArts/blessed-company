@@ -109,6 +109,10 @@ export interface CombatConfig {
   greaterSpiritPersists: boolean;
   /** A party healer only holds position for an ally who needs a heal (below its smite threshold); otherwise it closes on its target to smite. */
   healerSmitesWhenIdle: boolean;
+  /** An enemy healer that is the last enemy standing attacks instead of healing itself. */
+  lastHealerAttacks: boolean;
+  /** Abilities that ride the swing timer: when ready they replace the next melee auto (windup is the auto's, no cast time) instead of casting on their own. */
+  swingAbilities: string[];
   readyAtStartAbilities: string[];
   logCapacity: number;
 }
@@ -189,6 +193,8 @@ export function defaultCombatConfig(): CombatConfig {
     greaterSpiritHealScale: 1.5,
     greaterSpiritPersists: false,
     healerSmitesWhenIdle: false,
+    lastHealerAttacks: false,
+    swingAbilities: [],
     readyAtStartAbilities: ['Taunt'],
     logCapacity: 4096,
   };
@@ -203,6 +209,7 @@ export function cloneCombatConfig(c: CombatConfig): CombatConfig {
     abilityCastTimes: new Map(c.abilityCastTimes),
     autoCastTimes: new Map(c.autoCastTimes),
     projectileUnits: [...c.projectileUnits],
+    swingAbilities: [...c.swingAbilities],
     autoPowerMult: new Map(c.autoPowerMult),
     autoSpeedMult: new Map(c.autoSpeedMult),
     abilityPowerMult: new Map(c.abilityPowerMult),
@@ -1498,7 +1505,8 @@ export class CombatSim {
     if (u.summon) tags |= DamageTag.Summon;
     if (u.healer && !u.spiritHeals) {
       // Smite rule: heal the lowest-HP ally while any is below the threshold, else smite.
-      const hurt = this.lowestHpAlly(u, true);
+      const alone = this.cfg.lastHealerAttacks && u.enemy && !this.allies(u).some((a) => a.id !== u.id);   // the last enemy: damage beats healing itself
+      const hurt = alone ? undefined : this.lowestHpAlly(u, true);
       if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold) {
         if (dist(u, hurt) > range) return; // waiting to get the ally into Range
         if (!bound) u.attackTimer -= interval;
@@ -1518,6 +1526,13 @@ export class CombatSim {
       if (reach.length) tgt = this.closestOf(u, reach);
     }
     if (!tgt || !tgt.alive || dist(u, tgt) > range) return;
+    if (!bound && this.cfg.swingAbilities.length > 0) {
+      // A ready swing ability (Warrior Cleave) takes this swing: same timer and windup as a normal attack, then its own cooldown starts.
+      for (let i = 0; i < u.extraAbilities.length; i++) {
+        if (!this.cfg.swingAbilities.includes(u.extraAbilities[i].id)) continue;
+        if (this.castAbility(u, u.extraAbilities[i].id, i, false, true)) { u.attackTimer -= interval; return; }
+      }
+    }
     if (!bound) u.attackTimer -= interval;
     this.bus.raise('AttackStarted', { attacker: u.id, target: tgt.id });
     const w = bound ? this.autoCastTime(u) : this.autoWindup(u);
@@ -1816,7 +1831,10 @@ export class CombatSim {
 
   private tryAbility(u: Unit): void {
     this.castAbility(u, u.abilityId, -1, false);
-    for (let i = 0; i < u.extraAbilities.length && u.alive; i++) this.castAbility(u, u.extraAbilities[i].id, i, false);
+    for (let i = 0; i < u.extraAbilities.length && u.alive; i++) {
+      if (this.cfg.swingAbilities.includes(u.extraAbilities[i].id)) continue;   // it waits for the swing (tryAuto)
+      this.castAbility(u, u.extraAbilities[i].id, i, false);
+    }
   }
 
   /** The cooldown timer of a slot: -1 the primary ability, otherwise the extraAbilities index (the C++ passes a reference). */
@@ -1835,7 +1853,7 @@ export class CombatSim {
     return effects.sort((a, b) => a.Order - b.Order); // Array.prototype.sort is stable, like std::stable_sort
   }
 
-  private castAbility(u: Unit, abilityId: string, slot: number, force: boolean): boolean {
+  private castAbility(u: Unit, abilityId: string, slot: number, force: boolean, asSwing = false): boolean {
     if (abilityId === '' || u.summon) return false;
     if (!force && u.castKind !== CastKind.None) return false; // already casting
     const ab = this.data.findAbility(abilityId);
@@ -1850,7 +1868,7 @@ export class CombatSim {
     this.forcingCast = force;
     if (this.effectTargets(u, effects[0]).length === 0) { this.forcingCast = false; return false; } // nothing to hit: keep it ready
     this.setTimer(u, slot, 0.0);
-    const w = force ? 0.0 : this.abilityCastTime(u, ab.Name);
+    const w = force ? 0.0 : asSwing ? this.autoWindup(u) : this.abilityCastTime(u, ab.Name);   // a swing ability uses the weapon's windup
     if (w > 0.0) {
       // A cast time: the cooldown starts now, the effects land when the bar fills (resolveAbilityCast).
       this.forcingCast = false;

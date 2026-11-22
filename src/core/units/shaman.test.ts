@@ -516,4 +516,28 @@ describe('units: Shaman formerly pending, now implemented', () => {
     CHECK(U(s, sh).healDone > 0);
     NEAR(U(s, sh).threatGenerated, 0, 1e-12);
   });
+  it('a lone Shaman attacks instead of healing itself (lastHealerAttacks)', () => {
+    const run = (flag: boolean, withGrunt: boolean): { hits: number; heals: number } => {
+      const cfg = defaultCombatConfig();
+      cfg.lastHealerAttacks = flag;
+      const s = new CombatSim(data, 1, cfg);
+      const sh = s.addEnemy('Shaman', 1);
+      if (withGrunt) { const g = s.addEnemy('Grunt', 1); Freeze(s, g); Place(s, g, 900, 0); }
+      const w = s.addPartyUnit('Warrior');
+      Freeze(s, w);
+      Place(s, w, -300, 0);
+      Place(s, sh, 200, 0);
+      s.startFight();
+      SetFrac(s, sh, 0.5);
+      let hits = 0, heals = 0;
+      s.getBus().subscribe('DamageDealt', (e) => { if (e.source === sh) hits++; });
+      s.getBus().subscribe('HealApplied', (e) => { if (e.source === sh) heals++; });
+      StepSeconds(s, 4);
+      return { hits, heals };
+    };
+    const off = run(false, false), on = run(true, false), withAlly = run(true, true);
+    CHECK(off.hits === 0 && off.heals > 0);   // old rule: it heals itself and never attacks
+    CHECK(on.hits > 0 && on.heals === 0);
+    CHECK(withAlly.heals > 0);   // with another enemy alive it still heals
+  });
 });

@@ -18,7 +18,7 @@ describe('hero sheets', () => {
       ['Health', '250'], ['Damage', '6'], ['AttackSpeed', '1.00/s'], ['DefensePct', '40%'], ['CritChance', 'Locked'], ['CritFactor', 'Locked'],
     ]);
     expect(w.role).toBe('Tank');
-    expect(w.skills.map((s) => s.name)).toEqual(['Sword Strike', 'Taunt']);   // Cleave exists in AbilityData but no class lists it (ClassData ExtraAbilityIds is empty)
+    expect(w.skills.map((s) => s.name)).toEqual(['Sword Strike', 'Taunt', 'Cleave']);   // Cleave is the second ability slot since Nov 22
     expect(heroes.filter((h) => h.owned).map((h) => h.className)).toEqual(['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner']);   // all six since Nov 21
     expect(heroes.find((h) => h.className === 'Barbarian')!.role).toBe('Tank');
     expect(heroes.find((h) => h.className === 'Summoner')!.role).toBe('Healer');

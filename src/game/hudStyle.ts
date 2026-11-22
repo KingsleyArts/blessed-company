@@ -142,7 +142,7 @@ export function gem(g: G, cx: number, cy: number, rx: number, ry: number, light:
 export const blueGem = (g: G, cx: number, cy: number, rx: number, ry: number): void => gem(g, cx, cy, rx, ry, 0xb9e6ff, 0x4f9ff0, 0x2358c4);
 export const goldGem = (g: G, cx: number, cy: number, rx: number, ry: number): void => gem(g, cx, cy, rx, ry, 0xfff0b0, 0xf2b53a, 0xb96f16);
 
-export type IconName = 'sword' | 'swords' | 'speed' | 'heart' | 'shield' | 'cooldown' | 'crit' | 'cross' | 'sun';
+export type IconName = 'sword' | 'swords' | 'speed' | 'heart' | 'shield' | 'cooldown' | 'crit' | 'cross' | 'sun' | 'scales';
 
 function shieldShape(cx: number, cy: number, s: number): number[][] {
   return [[cx - s * 0.85, cy - s * 0.7], [cx, cy - s], [cx + s * 0.85, cy - s * 0.7], [cx + s * 0.75, cy + s * 0.2], [cx, cy + s], [cx - s * 0.75, cy + s * 0.2]];
@@ -195,6 +195,14 @@ export function icon(g: G, name: IconName, cx: number, cy: number, s: number, co
     case 'cross':
       g.fillStyle(0x1f8a35, 1).fillRoundedRect(cx - s, cy - s * 0.42, 2 * s, s * 0.84, s * 0.14).fillRoundedRect(cx - s * 0.42, cy - s, s * 0.84, 2 * s, s * 0.14);
       g.fillStyle(color, 1).fillRect(cx - s * 0.82, cy - s * 0.27, 1.64 * s, s * 0.54).fillRect(cx - s * 0.27, cy - s * 0.82, s * 0.54, 1.64 * s);
+      break;
+    case 'scales':
+      g.lineStyle(w * 0.8, color, 1).lineBetween(cx, cy - s * 0.8, cx, cy + s * 0.8).lineBetween(cx - s * 0.5, cy + s * 0.85, cx + s * 0.5, cy + s * 0.85)
+        .lineBetween(cx - s * 0.95, cy - s * 0.55, cx + s * 0.95, cy - s * 0.55);
+      for (const d of [-1, 1]) {
+        g.lineBetween(cx + d * s * 0.95, cy - s * 0.55, cx + d * s * 0.95 - s * 0.38, cy + s * 0.15).lineBetween(cx + d * s * 0.95, cy - s * 0.55, cx + d * s * 0.95 + s * 0.38, cy + s * 0.15);
+        poly(g, [[cx + d * s * 0.95 - s * 0.45, cy + s * 0.15], [cx + d * s * 0.95 + s * 0.45, cy + s * 0.15], [cx + d * s * 0.95, cy + s * 0.5]], color);
+      }
       break;
     case 'sun':
       for (let k = 0; k < 8; ++k) {

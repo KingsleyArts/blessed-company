@@ -53,6 +53,7 @@ export const legacyHeroData: CombatData = (() => {
   barb.BaseThreat = 1.0;
   barb.ThreatMultiplier = Math.fround(1.2); // as the CSV reader stores it
   barb.ExtraAbilityIds = [];
+  d.findClassRow('Warrior')!.ExtraAbilityIds = [];   // Cleave came in Nov 22; the C++ Warrior had one ability
   const rage = d.findAbility('Rage')!;
   rage.Cooldown = 14;
   rage.EffectIds = ['Rage_1', 'Rage_2'];

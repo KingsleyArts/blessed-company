@@ -1,7 +1,7 @@
 // RunBot port (Core/RunBot.h): deterministic auto-player, a thin wrapper over chooseAuto, plus the optional Essence spending
 // heuristic (a cycle of (class, stat) targets, one rank at a time, waiting when the target is not affordable yet).
 import { BuyRefusal } from './essenceSidebar';
-import { AutoAction, AutoReason, chooseAuto, defaultAutoParams, type AutoParams } from './runAuto';
+import { AutoAction, AutoReason, chooseAuto, defaultAutoParams, type AutoMode, type AutoParams } from './runAuto';
 import type { RunFlow } from './runFlow';
 
 export interface BotChoice {
@@ -26,8 +26,8 @@ export class RunBot {
     void seed;
   }
 
-  choose(flow: RunFlow, partyHpFraction: number): BotChoice {
-    const d = chooseAuto(flow, partyHpFraction, this.params);
+  choose(flow: RunFlow, partyHpFraction: number, mode?: AutoMode): BotChoice {
+    const d = chooseAuto(flow, partyHpFraction, this.params, mode);
     const c: BotChoice = { teleport: d.action === AutoAction.Teleport, node: -1, target: -1, reason: d.reason };
     if (d.action === AutoAction.Move) {
       c.node = d.step;

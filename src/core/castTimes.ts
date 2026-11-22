@@ -21,7 +21,7 @@ export function installShippedCastTimes(cfg: CombatConfig): void {
   // Abilities, by ability name. Taunt, Rage and GroupHeal stay instant: Taunt and Rage are buffs (the tank must hold aggro on time),
   // and GroupHeal fires in the gap between a caster's auto casts (an ability never starts during another cast).
   cfg.abilityCastTimes = new Map([
-    ['Fireball', 1.2], ['Execute', 0.4], ['GreaterSpirit', 2.0], ['Cleave', 0.4],
+    ['Fireball', 1.2], ['Execute', 0.4], ['GreaterSpirit', 2.0],   // Cleave has none: it takes a swing (CombatConfig swingAbilities)
   ]);
 }
 

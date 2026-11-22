@@ -1,14 +1,16 @@
 // Port of tests/units/warrior/tests.cpp: the Warrior as data/*.csv and DESIGN-DECISIONS 7 describe it. Taunt is the only
 // ability; Cleave is disabled (rows kept, granted explicitly below so the AreaAroundSelf mechanism stays proven).
 import { describe, it } from 'vitest';
-import { CombatSim, FightState, runFightHeadless } from '../combatSim';
+import { CombatSim, FightState, defaultCombatConfig, runFightHeadless } from '../combatSim';
+import { installShippedCastTimes } from '../castTimes';
 import { DamageTag } from '../eventBus';
-import { CHECK, Cls, EffectDuration, EffectValue, Freeze, NEAR, Place, StepTicks, cloneData, data } from '../combatTestKit';
+import { CHECK, Cls, EffectDuration, EffectValue, Freeze, NEAR, Place, StepSeconds, StepTicks, cloneData, data } from '../combatTestKit';
 
 const Warrior = () => Cls('Warrior');
 function dataWithCleave() {
   const d = cloneData();
   for (const r of d.classes) if (r.Name === 'Warrior') r.ExtraAbilityIds = ['Cleave'];
+  d.findAbility('Cleave')!.EffectIds = ['Cleave_1', 'Cleave_2'];   // the flat threat row is kept and proven; the shipped Cleave is damage only (Nov 22)
   return d;
 }
 
@@ -24,7 +26,7 @@ describe('units: Warrior', () => {
     const t = data.findAbility('Taunt');
     CHECK(t && t.EffectIds.join('|') === 'Taunt_3|Taunt_1|Taunt_2');   // director Nov 20: threat to highest +1, then the forced attack
     NEAR(EffectValue('Taunt_1'), 1, 1e-9);
-    CHECK(w.ExtraAbilityIds.length === 0);
+    CHECK(w.ExtraAbilityIds.join('|') === 'Cleave');   // Nov 22: the second ability slot
     const forced = data.findEffect('Taunt_3');
     CHECK(forced && forced.Type === 'ApplyModifier' && forced.Stat === 'Taunt' && forced.Duration > 0);
     CHECK(t && forced && t.Cooldown > forced.Duration);
@@ -131,5 +133,35 @@ describe('units: Warrior', () => {
       const b = runFightHeadless(data, seed, ['Warrior', 'Mage'], ['Grunt', 'Grunt', 'Grunt']);
       CHECK(a.logText === b.logText);
     }
+  });
+  it('CleaveTakesASwingLikeAnAttack (swingAbilities): same timer and windup, no cast time, damage only', () => {
+    const run = (on: boolean): { cleaves: number; strikes: number; firstCleave: number } => {
+      const d = cloneData();
+      if (!on) d.findClassRow('Warrior')!.ExtraAbilityIds = [];   // the baseline: no Cleave at all
+      const cfg = defaultCombatConfig();
+      installShippedCastTimes(cfg);
+      cfg.abilityCastTimes.set('Cleave', 5.0);   // a leftover cast time must not matter: a swing ability uses the weapon's windup
+      if (on) cfg.swingAbilities = ['Cleave'];
+      const s = new CombatSim(d, 1, cfg);
+      const w = s.addPartyUnit('Warrior');
+      Freeze(s, w);
+      Place(s, w, 0, 0);
+      const g = s.addEnemy('Grunt', 1);
+      Freeze(s, g);
+      Place(s, g, 100, 0);
+      s.mutableUnit(g)!.hp = 1e6;
+      s.startFight();
+      let cleaves = 0, strikes = 0, firstCleave = -1;
+      s.getBus().subscribe('AbilityCast', (e) => { if (e.abilityId === 'Cleave') { cleaves++; if (firstCleave < 0) firstCleave = s.tickCount(); } });
+      s.getBus().subscribe('DamageDealt', (e) => { if (e.source === w && (e.tags & DamageTag.Auto) !== 0) strikes++; });
+      StepSeconds(s, 12);
+      return { cleaves, strikes, firstCleave };
+    };
+    const off = run(false), on = run(true);
+    CHECK(on.cleaves >= 3 && on.cleaves <= 5);   // 3 s cooldown over 12 s
+    CHECK(on.firstCleave > 0 && on.firstCleave <= 105);   // ready after its 3 s cooldown (plus the swing windup), not the 5 s leftover cast time
+    CHECK(on.strikes + on.cleaves >= off.strikes - 2 && on.strikes + on.cleaves <= off.strikes + 1);   // each Cleave replaced a normal swing
+    CHECK(on.strikes < off.strikes);
+    CHECK(off.cleaves === 0);
   });
 });
