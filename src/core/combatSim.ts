@@ -72,8 +72,9 @@ export interface CombatConfig {
   abilityCooldownMult: Map<string, number>;
   /** Testing menu: ability cast time x, by ability name (only abilities with a cast time in abilityCastTimes). */
   abilityCastMult: Map<string, number>;
-  /** Testing menu: extra multiplier on a healer's heal (Searing Light), by class name; the smite keeps autoPowerMult only. */
+  /** Testing menu: a healer's Heal (not its Searing Light smite), by class name: heal amount x and cast speed x. The smite uses autoPowerMult and autoSpeedMult. */
   autoHealMult: Map<string, number>;
+  autoHealSpeedMult: Map<string, number>;
   eliteWindupFactor: number;
   tankMeleeFirstRange: number;
   castTimeScale: number;
@@ -156,6 +157,7 @@ export function defaultCombatConfig(): CombatConfig {
     abilityCooldownMult: new Map(),
     abilityCastMult: new Map(),
     autoHealMult: new Map(),
+    autoHealSpeedMult: new Map(),
     eliteWindupFactor: 1.5,
     tankMeleeFirstRange: 300.0,
     castTimeScale: 1.0,
@@ -204,6 +206,7 @@ export function cloneCombatConfig(c: CombatConfig): CombatConfig {
     abilityCooldownMult: new Map(c.abilityCooldownMult),
     abilityCastMult: new Map(c.abilityCastMult),
     autoHealMult: new Map(c.autoHealMult),
+    autoHealSpeedMult: new Map(c.autoHealSpeedMult),
     readyAtStartAbilities: [...c.readyAtStartAbilities],
   };
 }
@@ -1495,9 +1498,9 @@ export class CombatSim {
       if (hurt && hurt.hp / this.maxHp(hurt) < u.smiteThreshold) {
         if (dist(u, hurt) > range) return; // waiting to get the ally into Range
         if (!bound) u.attackTimer -= interval;
-        const power = (bound ? this.autoCastPower(u) : 1.0) * this.autoPower(u) * (this.cfg.autoHealMult.get(u.name) ?? 1.0);
+        const power = (bound ? this.autoCastPower(u) : 1.0) * (this.cfg.autoHealMult.get(u.name) ?? 1.0);   // the Heal has its own tuning, apart from the smite's autoPower
         const healBase = kHealBase * u.autoHealScale * u.healFloorMult * power;
-        const w = bound ? this.autoCastTime(u) : this.autoWindup(u);
+        const w = bound ? this.autoCastTime(u, true) : this.autoWindup(u);
         if (w > 0.0) { this.startCast(u, CastKind.AutoHeal, w, hurt.id, 0, healBase); return; }
         this.applyHeal(u.id, hurt.id, healBase);
         return;
@@ -1642,9 +1645,10 @@ export class CombatSim {
     return base !== undefined && base > 0.0 ? base : 0.0;
   }
   /** Seconds one auto cast takes now: base x (class base AttackSpeed / current AttackSpeed), so AttackSpeed upgrades act as cast speed. */
-  private autoCastTime(u: Unit): number {
+  private autoCastTime(u: Unit, healing = false): number {
     const baseAs = Math.max(1e-6, u.stats.getBase(StatId.AttackSpeed));
-    return this.cfg.castTimeScale * this.autoCastBase(u) * baseAs / this.speedOf(u);
+    const speed = healing ? u.stats.get(StatId.AttackSpeed) * (this.cfg.autoHealSpeedMult.get(u.name) ?? 1.0) : this.speedOf(u);
+    return this.cfg.castTimeScale * this.autoCastBase(u) * baseAs / speed;
   }
   /** Damage and heal multiplier of a cast-bound auto: base cast time x class base AttackSpeed, so a longer base cast hits harder and the
    *  class's DPS (and healing per second) stays what ClassData says. Not scaled by AttackSpeed or by the testing time scale. */

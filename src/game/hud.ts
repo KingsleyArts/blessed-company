@@ -67,9 +67,12 @@ const kTune: TuneDef[] = [
   { id: 'floorDamage', name: 'Enemy damage growth per floor (x each floor)', step: 0.01, min: 1, max: 1.6, tab: 1, unit: kAllEnemies },
   // Heroes' basic attack / heal and abilities, each in its hero's block. Adding a hero or an ability: add it to these two lists so it is tunable.
   ...kTuneHeroes.flatMap(([cls, attack]) => [
-    { id: `atkPower:${cls}`, name: cls === 'Priest' ? `${attack} power x (heal and smite)` : `${attack} power x`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls },
+    { id: `atkPower:${cls}`, name: cls === 'Priest' ? `${attack} damage x (the smite)` : `${attack} power x`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls },
     { id: `atkSpeed:${cls}`, name: `${attack} ${kCastBound.includes(cls) ? 'cast speed x (higher = faster cast)' : 'attacks per second x'}`, step: 0.05, min: 0.25, max: 4, tab: 0, unit: cls },
-    ...(cls === 'Priest' ? [{ id: 'healMult:Priest', name: `${attack} heal x (heal only, on top of power)`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls }] : []),
+    ...(cls === 'Priest' ? [
+      { id: 'healMult:Priest', name: 'Heal amount x', step: 0.05, min: 0.1, max: 4, tab: 0, unit: cls },
+      { id: 'healSpeed:Priest', name: 'Heal cast speed x (higher = faster cast)', step: 0.05, min: 0.25, max: 4, tab: 0, unit: cls },
+    ] : []),
   ]),
   ...kTuneAbilities.flatMap(([id, name, owner, cast]) => [
     { id: `abPower:${id}`, name: `${name} power x`, step: 0.05, min: 0.1, max: 4, tab: 0, unit: owner },
@@ -81,9 +84,10 @@ const kTune: TuneDef[] = [
 const tuneOrder = (d: TuneDef): number => {
   const [kind, key] = d.id.split(':');
   if (kind === 'atkPower') return 0;
-  if (kind === 'healMult') return 1;
-  if (kind === 'atkSpeed') return 2;
-  if (d.id === 'smiteThreshold') return 3;
+  if (kind === 'healMult') return 2;
+  if (kind === 'healSpeed') return 3;
+  if (kind === 'atkSpeed') return 1;
+  if (d.id === 'smiteThreshold') return 4;
   if (kind === 'abPower' || kind === 'abCooldown' || kind === 'abCast') return 10 + kTuneAbilities.findIndex((a) => a[0] === key) * 3 + (kind === 'abPower' ? 0 : kind === 'abCooldown' ? 1 : 2);
   if (kind === 'size') return 99;
   return 5;
@@ -939,6 +943,7 @@ export class Hud {
       else if (kind === 'abCooldown') c.abilityCooldownMult.set(key, v);
       else if (kind === 'abCast') c.abilityCastMult.set(key, v);
       else if (kind === 'healMult') c.autoHealMult.set(key, v);
+      else if (kind === 'healSpeed') c.autoHealSpeedMult.set(key, v);
     });
   }
 
