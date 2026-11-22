@@ -2,7 +2,7 @@ Name,Tier,AllowedClasses,EssenceBaseCost,EssenceCostGrowth,GoldUnlockCost,MaxRan
 Damage,0,All,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap (-1 = TBD)
 AttackSpeed,0,All,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 Health,0,All,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
-Threat,0,Warrior,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
+Threat,0,Warrior|Barbarian,20,0.15,0,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 DefensePct,1,All,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 CritChance,1,Warrior|Assassin|Barbarian|Summoner|Mage,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap
 CritFactor,1,Warrior|Assassin|Barbarian|Summoner|Mage,20,0.15,100,-1,-1,-1,false,PLACEHOLDER maxrank/bonus/cap

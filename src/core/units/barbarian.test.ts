@@ -99,8 +99,8 @@ describe('units: Barbarian data', () => {
     const c = Cls('Barbarian');
     const has = (s: string) => c.AllowedStats.includes(s);
     for (const s of ['Damage', 'AttackSpeed', 'Health', 'DefensePct', 'HealthRegen', 'CooldownReduction', 'CritChance', 'CritFactor',
-      'Fortitude', 'DeathDefy', 'Lifesteal']) CHECK(has(s), s);
-    for (const s of ['Threat', 'ThreatMultiplier', 'Range', 'Thorns', 'RendArmorChance', 'HealPower']) CHECK(!has(s), s);
+      'Fortitude', 'DeathDefy', 'Lifesteal', 'Threat']) CHECK(has(s), s); // Threat is a tank stat since Nov 21
+    for (const s of ['ThreatMultiplier', 'Range', 'Thorns', 'RendArmorChance', 'HealPower']) CHECK(!has(s), s);
     let listed = 0;
     for (const row of statDef.rows) {
       const name = sd(row, 'Name');
@@ -188,10 +188,10 @@ describe('units: Barbarian threat', () => {
       CHECK(name !== 'ThreatMultiplier');
       if (name === 'Threat') {
         const cls = splitList(sd(row, 'AllowedClasses'));
-        CHECK(cls.length === 1 && cls[0] === 'Warrior');
+        CHECK(cls.length === 2 && cls[0] === 'Warrior' && cls[1] === 'Barbarian'); // the tanks (director, Nov 21)
       }
     }
-    for (const a of Cls('Barbarian').AllowedStats) CHECK(a !== 'Threat' && a !== 'ThreatMultiplier');
+    for (const a of Cls('Barbarian').AllowedStats) CHECK(a !== 'ThreatMultiplier'); // Threat itself is a tank stat since Nov 21
     const ids: Record<string, StatId> = {
       Damage: StatId.Damage, AttackSpeed: StatId.AttackSpeed, Health: StatId.Health, DefensePct: StatId.DefensePercent,
       HealthRegen: StatId.HealthRegen, CooldownReduction: StatId.CooldownReduction, CritChance: StatId.CritChance, CritFactor: StatId.CritFactor,

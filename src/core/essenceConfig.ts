@@ -52,7 +52,7 @@ export class EssenceConfig {
   }
 }
 
-/** Tier 0 only: Damage, AttackSpeed, Health (every class) and Threat (Warrior). rankScale 1 = the old coarse ranks. */
+/** Tier 0 only: Damage, AttackSpeed, Health (every class) and Threat (the tanks). rankScale 1 = the old coarse ranks. */
 export function defaultEssenceConfig(rankScale = kEssenceRankScale): EssenceConfig {
   const c = new EssenceConfig();
   c.rankScale = rankScale < 1 ? 1 : rankScale;
@@ -64,7 +64,7 @@ export function defaultEssenceConfig(rankScale = kEssenceRankScale): EssenceConf
   add('Damage', StatId.Damage, []);
   add('AttackSpeed', StatId.AttackSpeed, []);
   add('Health', StatId.Health, []);
-  add('Threat', StatId.Threat, ['Warrior']);
+  add('Threat', StatId.Threat, ['Warrior', 'Barbarian']); // a tank stat (director, Nov 21)
   return c;
 }
 
