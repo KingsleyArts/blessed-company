@@ -17,8 +17,11 @@ export interface PortraitSlot { portrait: Rect; abilities: [Rect, Rect]; whole: 
 export interface Layout {
   topBar: Rect;
   pause: Rect; speed: Rect; autoBtn: Rect;
+  /** The three auto-option buttons beside Auto (their jobs are wired later). */
+  autoOpts: Rect[];
+  /** The miracle column over the room's bottom-left corner: three buttons stacked, the vertical gauge beside them and the cast count under it. */
   healBtn: Rect; shieldBtn: Rect; smiteBtn: Rect;
-  gauge: Rect;
+  gauge: Rect; gaugeCount: Rect;
   minimap: Rect;
   essence: Rect;
   roomArea: Rect;
@@ -45,10 +48,7 @@ export function computeLayout(w: number, h: number, partyCount: number): Layout 
   const pause = new Rect(bx, by, bh * 1.25, bh);
   const speed = new Rect(pause.right() + bgap, by, bh * 2.2, bh);
   const autoBtn = new Rect(speed.right() + bgap, by, bh * 2.2, bh);
-  const healBtn = new Rect(autoBtn.right() + bgap * 3, by, bh * 2.6, bh);
-  const shieldBtn = new Rect(healBtn.right() + bgap, by, bh * 2.6, bh);
-  const smiteBtn = new Rect(shieldBtn.right() + bgap, by, bh * 2.6, bh);
-  const gauge = new Rect(smiteBtn.right() + bgap * 2, by + bh * 0.3, bh * 3.4, bh * 0.4);
+  const autoOpts = [0, 1, 2].map((k) => new Rect(autoBtn.right() + bgap * (k + 1) + k * bh * 1.1, by, bh * 1.1, bh));
 
   const barGap = 0.004 * h;
   const hpH = 0.014 * h;
@@ -79,7 +79,19 @@ export function computeLayout(w: number, h: number, partyCount: number): Layout 
   const roomBottom = h - (chrome + 0.105 * h);
   const roomArea = new Rect(0.005 * w, roomTop, colX - 0.01 * w, roomBottom - roomTop);
   const controlBand = new Rect(roomArea.x, roomBottom, roomArea.w, Math.max(0, h - margin - roomBottom));
-  return { topBar, pause, speed, autoBtn, healBtn, shieldBtn, smiteBtn, gauge, minimap, essence, roomArea, controlBand, portraitStrip, slots, slotCount };
+  // The miracle column sits in the room's bottom-left corner, just above the portraits: three stacked buttons, then the vertical gauge.
+  const mw = bh * 1.9, mh = bh * 0.95, mgap = bgap * 0.8;
+  const stackH = 3 * mh + 2 * mgap;
+  const countH = bh * 0.55;
+  const stackTop = roomBottom - 0.01 * h - countH - stackH;
+  const mx = roomArea.x + 0.02 * w;
+  const healBtn = new Rect(mx, stackTop, mw, mh);
+  const shieldBtn = new Rect(mx, stackTop + mh + mgap, mw, mh);
+  const smiteBtn = new Rect(mx, stackTop + 2 * (mh + mgap), mw, mh);
+  const gw = bh * 0.34;
+  const gauge = new Rect(mx + mw + bgap * 2.2, stackTop + bh * 0.3, gw, stackH - bh * 0.3);
+  const gaugeCount = new Rect(gauge.x - bh * 0.3, gauge.bottom() + bgap * 0.4, gw + bh * 0.6, countH);
+  return { topBar, pause, speed, autoBtn, autoOpts, healBtn, shieldBtn, smiteBtn, gauge, gaugeCount, minimap, essence, roomArea, controlBand, portraitStrip, slots, slotCount };
 }
 
 export function portraitAt(L: Layout, px: number, py: number): number {

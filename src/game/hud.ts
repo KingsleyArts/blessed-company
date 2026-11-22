@@ -427,6 +427,12 @@ export class Hud {
     const dot = L.autoBtn.h * 0.11;
     g.fillStyle(autoOn ? lin(0.3, 1, 0.4) : kHud.muted, 1).fillCircle(L.autoBtn.x + 0.3 * L.autoBtn.h, L.autoBtn.y + L.autoBtn.h / 2, dot);
     this.texts.centered('b.auto', 'Auto', new Rect(L.autoBtn.x + 0.42 * L.autoBtn.h, L.autoBtn.y, L.autoBtn.w - 0.5 * L.autoBtn.h, L.autoBtn.h), kBaseFontPx * 1.35 * S, kTextLight);
+    // The three auto options (shield, scales, swords): drawn now, wired to their jobs next.
+    const optIcons: [IconName, number][] = [['shield', 0x9fc4ff], ['scales', 0xf1dc8c], ['swords', 0xffb070]];
+    L.autoOpts.forEach((r, k) => {
+      this.frame(r, btn, 1, hov(r), false);
+      icon(g, optIcons[k][0], r.x + r.w / 2, r.y + r.h / 2, r.h * 0.3, optIcons[k][1]);
+    });
     this.hit(L.pause, 1, () => this.ui.togglePause());
     this.hit(L.speed, 1, () => this.ui.cycleSpeed(this.opts.testing ? 4 : 3));
     this.hit(L.autoBtn, 1, () => {
@@ -441,10 +447,9 @@ export class Hud {
       const can = this.rm.miracleReady(kind);
       const armed = this.armed === kind;
       this.frame(r, armed ? 0x6a4f16 : can ? kHud.plumLit : kHud.well, 1, can && hov(r), armed);
-      const s = r.h * 0.27;
-      icon(g, ic, r.x + r.h * 0.42, r.y + r.h / 2, s, can || armed ? accent : kHud.muted);
-      this.texts.centered(`b.m${kind}`, `${name} ${sim ? Math.trunc(sim.getGauge().cost(kind)) : 0}`, new Rect(r.x + r.h * 0.74, r.y, r.w - r.h * 0.82, r.h),
-        kBaseFontPx * 1.15 * S, can || armed ? kTextLight : lin(0.42, 0.4, 0.44));
+      icon(g, ic, r.x + r.w * 0.27, r.y + r.h / 2, r.h * 0.3, can || armed ? accent : kHud.muted);
+      this.texts.centered(`b.m${kind}`, `${sim ? Math.trunc(sim.getGauge().cost(kind)) : 0}`, new Rect(r.x + r.w * 0.45, r.y, r.w * 0.5, r.h),
+        kBaseFontPx * 1.5 * S, can || armed ? kTextLight : lin(0.42, 0.4, 0.44));
       this.hit(r, 1, () => this.arm(kind));
     };
     miracle(L.healBtn, 'Heal', MiracleKind.DivineHealing, 'cross', 0x6df27f);
@@ -456,22 +461,22 @@ export class Hud {
       this.texts.centered('b.banner', `${miracleName(this.armed)}: click ${foe ? 'the ground to strike the area' : 'a hero portrait'} (press the button again to cancel)`,
         banner, kBaseFontPx * 1.4 * S, lin(1, 0.95, 0.5));
     }
-    // The wings sit inside the gauge's rectangle, so it takes no more room than before.
-    const wingS = L.gauge.h * 0.8;
-    const wingLen = wingS * 1.25;
-    const G = new Rect(L.gauge.x + wingLen, L.gauge.y, L.gauge.w - 2 * wingLen, L.gauge.h);
-    wing(g, G.x + 1, G.y + G.h / 2, wingS, -1);
-    wing(g, G.right() - 1, G.y + G.h / 2, wingS, 1);
-    plate(g, G, S, kHud.ink, { edge: kHud.gold, radius: G.h / 2, sheen: 0 });
+    // The vertical gauge beside the miracle column: winged top, fills from the bottom; under it, how many of the cheapest miracle it can pay for.
+    const G = L.gauge;
+    const wingS = G.w * 0.9;
+    wing(g, G.x + G.w * 0.2, G.y - wingS * 0.1, wingS, -1);
+    wing(g, G.right() - G.w * 0.2, G.y - wingS * 0.1, wingS, 1);
+    plate(g, G, S, kHud.ink, { edge: kHud.gold, radius: G.w / 2, sheen: 0 });
     const f = gc > 0 ? Math.min(1, Math.max(0, gv / gc)) : 0;
     const inset = Math.max(2, 2.5 * S);
     const iw = G.w - 2 * inset, ih = G.h - 2 * inset;
     if (f > 0) {
-      const fw = Math.max(ih, iw * f);
-      g.fillStyle(0xf1dc8c, 1).fillRoundedRect(G.x + inset, G.y + inset, fw, ih, ih / 2);
-      g.fillStyle(0xffffff, 0.3).fillRoundedRect(G.x + inset, G.y + inset, fw, ih * 0.42, ih * 0.2);
+      const fh = Math.max(iw, ih * f);
+      g.fillStyle(0xf1dc8c, 1).fillRoundedRect(G.x + inset, G.bottom() - inset - fh, iw, fh, iw / 2);
+      g.fillStyle(0xffffff, 0.3).fillRoundedRect(G.x + inset, G.bottom() - inset - fh, iw * 0.42, fh, iw * 0.2);
     }
-    this.texts.centered('b.gauge', `Miracle ${Math.trunc(gv)} / ${Math.trunc(gc)}`, new Rect(L.gauge.x, G.bottom() + 1, L.gauge.w, G.h * 1.4), kBaseFontPx * S, kTextLight);
+    const cheapest = sim ? Math.min(...[MiracleKind.DivineHealing, MiracleKind.DivineShield, MiracleKind.DivineSmite].map((k) => sim.getGauge().cost(k))) : 0;
+    this.texts.centered('b.gauge', `${cheapest > 0 ? Math.floor(gv / cheapest) : 0}`, L.gaugeCount, kBaseFontPx * 1.5 * S, kTextLight);
   }
 
   private arm(kind: MiracleKind): void {
