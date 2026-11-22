@@ -9,7 +9,7 @@ import { formatAmount } from '../core/uiText';
 import { fillFraction, floatAnimAt, jitter } from '../ui/hudLayout';
 import { barVisible, kHealOffsetPx, kHealSize, pushFloat, readability, type FloatEntry, type FloatKind } from './combatText';
 import { TextPool, classColor, lin } from './draw';
-import { enemyTextureKey, heroPose, heroTextureKey, kEnemySpriteNames, kHeroMotion, kSpriteFacesLeft, newHeroFx, spriteSizes, unitSpriteSize, type HeroFx } from './heroMotion';
+import { enemyTextureKey, heroKoTextureKey, heroPose, heroTextureKey, kEnemySpriteNames, kHeroKoClasses, spiritTextureKey, kHeroMotion, kSpriteFacesLeft, newHeroFx, spriteSizes, unitSpriteSize, type HeroFx } from './heroMotion';
 import type { RoomView } from './roomView';
 
 const kBodyXY = 1.7;
@@ -78,9 +78,15 @@ export class UnitView {
 
   /** The unit is drawn as one still sprite moved in code: a hero with a chibi, or Archer / Brute / Shaman. */
   private hasStill(u: Unit): boolean {
-    if (u.summon) return false;
+    if (u.summon) return !u.enemy && this.scene.textures.exists(spiritTextureKey(u.greater));
     return this.scene.textures.exists(u.enemy ? enemyTextureKey(u.name) : heroTextureKey(u.name))
       && (!u.enemy || (kEnemySpriteNames as readonly string[]).includes(u.name));
+  }
+  /** The still texture to show now: a spirit's, a hero's knocked-out sprite when it has one and is down, else the idle sprite. */
+  private stillKey(u: Unit): string {
+    if (u.summon) return spiritTextureKey(u.greater);
+    if (u.enemy) return enemyTextureKey(u.name);
+    return !u.alive && (kHeroKoClasses as readonly string[]).includes(u.name) ? heroKoTextureKey(u.name) : heroTextureKey(u.name);
   }
 
   /** Where the unit stands now (the room view walks the party between rooms; staged enemies stand in the next room). */
@@ -201,7 +207,7 @@ export class UnitView {
     if (!v) {
       v = { gfx: this.scene.add.graphics(), hurtClock: 99, moveClock: 99, lastX: u.x, lastY: u.y, lastHp: u.hp, faceRight: !u.enemy, anim: '', seen: true };
       if (sprite) v.sprite = this.scene.add.sprite(0, 0, 'gob_13_Idle_R_1').setOrigin(0.5, 1);
-      if (this.hasStill(u)) v.hero = this.scene.add.image(0, 0, u.enemy ? enemyTextureKey(u.name) : heroTextureKey(u.name)).setOrigin(0.5, 1);
+      if (this.hasStill(u)) v.hero = this.scene.add.image(0, 0, this.stillKey(u)).setOrigin(0.5, 1);
       this.visuals.set(key, v);
     }
     v.seen = true;
@@ -309,6 +315,11 @@ export class UnitView {
     g.fillStyle(0x000000, 0.35);
     g.fillEllipse(foot.x, foot.y, rx * 2, rx * 0.7);
     // Lying down turns about the sprite's middle, so lift it to sit on the floor.
+    // A hero with a knocked-out sprite swaps to it instead of tipping over.
+    const key = this.stillKey(u);
+    if (img.texture.key !== key) img.setTexture(key);
+    const koSprite = !u.alive && key !== heroTextureKey(u.name) && !u.summon && !u.enemy;
+    if (koSprite) pose.angle = 0;
     const down = Math.abs(pose.angle) > 1;
     img.setOrigin(0.5, down ? 0.5 : 1);
     img.setPosition(lifted.x, down ? lifted.y - img.width * sc * 0.5 * Math.abs(Math.sin((pose.angle * Math.PI) / 180)) - (img.height * sc * 0.5) * Math.abs(Math.cos((pose.angle * Math.PI) / 180)) : lifted.y);

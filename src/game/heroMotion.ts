@@ -92,6 +92,12 @@ export const enemyTextureKey = (name: string): string => `enemy_${name}`;
 /** The heroes that have a combat sprite (all six since the Barbarian and Summoner came online, Nov 21). */
 export const kHeroSpriteClasses = ['Warrior', 'Mage', 'Assassin', 'Priest', 'Barbarian', 'Summoner'] as const;
 export const heroTextureKey = (cls: string): string => `hero_${cls}`;
+/** Heroes with a knocked-out sprite (the director's sheets, Nov 21): it replaces the code-only tip-over. Others still tip over. */
+export const kHeroKoClasses = ['Barbarian', 'Assassin', 'Summoner'] as const;
+export const heroKoTextureKey = (cls: string): string => `hero_ko_${cls}`;
+/** The Summoner's spirits: the standard (weapon) spirit and the greater spirit. */
+export const kSpiritTextures = ['standard', 'greater'] as const;
+export const spiritTextureKey = (greater: boolean): string => (greater ? 'spirit_greater' : 'spirit_standard');
 /** Which way the chibi art (heroes and the still enemies) faces as drawn. It faces right (director, Nov 20: with `true` the heroes attacked with their backs turned),
  *  so it is mirrored only when the hero looks left. */
 export const kSpriteFacesLeft = false;

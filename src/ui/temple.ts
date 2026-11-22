@@ -432,9 +432,9 @@ function goButton(a: TempleActions, enabled: boolean): HTMLButtonElement {
  *  large frame. The tint shows while an image loads. */
 const heroArt = (cls: string, part: 'face' | 'art'): string => `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_${part}.webp`;
 const heroSprite = (cls: string): string => `${import.meta.env.BASE_URL}assets/heroes/${cls.toLowerCase()}_sprite.png`;
-/** Sprite heights in pixels (all drawn at one scale, 72 = a full slot). Assassin and Barbarian are stand-ins from their turnarounds until
- *  chibi sprites exist for them. */
-const kSpriteH: Record<string, number> = { Warrior: 63, Mage: 65, Priest: 69, Assassin: 72, Barbarian: 72, Summoner: 64 };
+/** Sprite heights in pixels (all drawn at one scale, 72 = a full slot). Every hero has a chibi sprite since Nov 21 (the Barbarian's includes
+ *  his axe, so he is the widest). */
+const kSpriteH: Record<string, number> = { Warrior: 63, Mage: 65, Priest: 69, Assassin: 72, Barbarian: 75, Summoner: 57 };
 
 const kHeroTint: Record<string, string> = {
   Warrior: '#b8443c', Mage: '#4a62c9', Assassin: '#3f9a5c', Priest: '#c9ad3e', Barbarian: '#c0702e', Summoner: '#8a4fc0',
