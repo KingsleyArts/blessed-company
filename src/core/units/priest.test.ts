@@ -769,3 +769,16 @@ describe('units: Priest fights', () => {
     CHECK(on.hits > 0);   // she fights from where she stands
   });
 });
+
+describe('debugKill', () => {
+  it('kills a living enemy outright and ends the fight', () => {
+    const s = new CombatSim(data, 1, defaultCombatConfig());
+    s.addPartyUnit('Warrior');
+    const g = s.addEnemy('Grunt', 1);
+    s.startFight();
+    s.debugKill(g);
+    CHECK(!s.getUnit(g)!.alive);
+    StepSeconds(s, 1);
+    CHECK(s.getState() === FightState.Won);
+  });
+});

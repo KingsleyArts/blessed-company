@@ -1129,6 +1129,12 @@ export class CombatSim {
     for (const u of this.units) if (u.summon && u.alive && u.owner === ownerId) this.retireSummon(u, how);
   }
 
+  /** Debug: kills a unit outright (the tuning menu's Kill all enemies); no source, so no damage pipeline. */
+  debugKill(id: UnitId): void {
+    const u = this.getUnit(id);
+    if (u && u.alive) this.kill(u, kNoUnit);
+  }
+
   private kill(victim: Unit, killer: UnitId): void {
     if (victim.summon) { this.retireSummon(victim, 'is destroyed'); return; }
     victim.alive = false;
