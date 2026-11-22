@@ -74,6 +74,17 @@ export function parseRunSave(text: string | undefined): RunCheckpoint | undefine
   if (!isBool(f.crystalFound) || !isBool(f.bossKilled) || !isBool(f.priestRescued)) return undefined;
   if (!isInt(f.floorKills) || !isInt(f.runKills) || !isInt(f.roomsCleared) || !isNum(f.essenceEarned) || !isNum(f.essenceSpent)) return undefined;
   if (!isPairList(f.dungeonGear)) return undefined;
+  let pendingGear: { slot: number; suggested: string }[] | undefined;
+  if (f.pendingGear !== undefined) {
+    if (!Array.isArray(f.pendingGear)) return undefined;
+    pendingGear = [];
+    for (const p of f.pendingGear as unknown[]) {
+      if (typeof p !== 'object' || p === null) return undefined;
+      const pj = p as Json;
+      if (!isInt(pj.slot) || !isStr(pj.suggested)) return undefined;
+      pendingGear.push({ slot: pj.slot, suggested: pj.suggested });
+    }
+  }
   if (!Array.isArray(f.sidebar)) return undefined;
   const sidebar: FlowCheckpoint['sidebar'] = [];
   for (const c of f.sidebar as unknown[]) {
@@ -103,6 +114,7 @@ export function parseRunSave(text: string | undefined): RunCheckpoint | undefine
       crystalFound: f.crystalFound, bossKilled: f.bossKilled, floorKills: f.floorKills, runKills: f.runKills, roomsCleared: f.roomsCleared,
       priestRescued: f.priestRescued, essenceEarned: f.essenceEarned, essenceSpent: f.essenceSpent,
       sidebar, dungeonGear: f.dungeonGear.map(([k, v]) => [k, v] as [string, number]),
+      ...(pendingGear && pendingGear.length > 0 ? { pendingGear } : {}),
     },
     units,
     gauge: r.gauge,

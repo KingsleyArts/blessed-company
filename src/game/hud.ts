@@ -2,7 +2,7 @@
 // buttons and the Miracle Gauge, the mini-map with fog, the arrow pad and Teleport, the Essence menu, the portrait strip, the gear toast
 // and (paused, testing builds) the tuning menu. Every rectangle comes from hudLayout.ts; clicks hit-test the same rectangles.
 import Phaser from 'phaser';
-import type { CombatSim, Unit } from '../core/combatSim';
+import { CastKind, type CombatSim, type Unit } from '../core/combatSim';
 import { RoomType } from '../core/floorGenerator';
 import { MiracleKind, MiracleResult, miracleName, miracleTargetsEnemy } from '../core/miracleGauge';
 import type { FloorSnapshot, RunManager, SidebarSnapshot } from '../core/runManager';
@@ -12,10 +12,11 @@ import {
   fillFraction, portraitAt, type Layout,
 } from '../ui/hudLayout';
 import { TextPool, box, classColor, fitScale, kBaseFontPx, kTextDim, kTextLight, lin, outline } from './draw';
-import { HudGraphics, blueGem, goldGem, icon, kHud, ornatePanel, plate, poly, statIcon, stud, wing } from './hudStyle';
+import { HudGraphics, type IconName, blueGem, goldGem, icon, kHud, ornatePanel, plate, poly, statIcon, stud, wing } from './hudStyle';
 import { themeById } from '../ui/roomTheme';
 import { kThemeId, roomHaze, type RoomView } from './roomView';
 import { heroLabel } from '../core/heroSheet';
+import { GearSlot, gearKey } from '../core/temple';
 import { readability } from './combatText';
 import { heroFaceKey, spriteSizes } from './heroMotion';
 import { loadTuning, saveTuning } from './localStore';
@@ -67,6 +68,12 @@ const kTune: TuneDef[] = [
 ];
 const kTuneTabs = ['Party and miracles', 'Enemies', 'Sprites and room', 'Readability', 'Attacks and speed', 'Abilities'];
 const tuneRow = (id: string): number => kTune.findIndex((d) => d.id === id);
+
+/** The icon and colour of each ability's tile (placeholder glyphs from the HUD's icon set until there is art). */
+const kAbilityIcons: Record<string, [IconName, number]> = {
+  Taunt: ['shield', 0x9fc4ff], Cleave: ['swords', 0xffb070], GroupHeal: ['cross', 0xf1ece4], Execute: ['sword', 0xff7a7a],
+  Rage: ['crit', 0xff8040], Fireball: ['sun', 0xffa040], GreaterSpirit: ['heart', 0x9cf0c0],
+};
 
 type Hit = { rect: Rect; action: () => void; prio: number };
 
@@ -165,6 +172,7 @@ export class Hud {
     if (this.opts.testing && this.ui.paused && !this.snap.runEnded && !this.overlayOpen) this.drawTune(L, S);
     this.drawPortraits(L, S);
     this.drawGearToast(L, S);
+    this.drawGearChoice(L, S);
     this.hideUnusedFaces();
   }
 
@@ -548,7 +556,7 @@ export class Hud {
     if (tp) this.g.fillStyle(0x9d6bff, 0.3).fillCircle(gx, gy, 0.42 * T.h);
     if (tp) blueGem(this.g, gx, gy, 0.23 * T.h, 0.33 * T.h);
     else poly(this.g, [[gx, gy - 0.33 * T.h], [gx + 0.23 * T.h, gy], [gx, gy + 0.33 * T.h], [gx - 0.23 * T.h, gy]], kHud.steel);
-    this.texts.centered('rc.tp', 'Teleport Up', new Rect(T.x + T.h, T.y, T.w - 1.2 * T.h, T.h), kBaseFontPx * 1.4 * S, tp ? kTextLight : kTextDim);
+    this.texts.centered('rc.tp', 'Ascend', new Rect(T.x + T.h, T.y, T.w - 1.2 * T.h, T.h), kBaseFontPx * 1.4 * S, tp ? kTextLight : kTextDim);
     if (tp) this.hit(T, 1, () => { if (this.teleportOk()) this.rm.teleportUp(); });
   }
 
@@ -695,18 +703,7 @@ export class Hud {
       const col = classColor(u.name);
       const selected = i === this.ui.selected;
       const dead = !u.alive;
-      plate(this.g, s.cooldown, S, kHud.ink, { edge: kHud.bronze, radius: s.cooldown.h / 2, sheen: 0 });
-      const cdIn = Math.max(1, 1.5 * S);
-      const cdBar = (f: number, color: number): void => {
-        const w = (s.cooldown.w - 2 * cdIn) * f;
-        if (w > 0) this.g.fillStyle(color, 1).fillRoundedRect(s.cooldown.x + cdIn, s.cooldown.y + cdIn, Math.max(w, s.cooldown.h - 2 * cdIn), s.cooldown.h - 2 * cdIn, (s.cooldown.h - 2 * cdIn) / 2);
-      };
-      const cd = sim.primaryAbilityCooldown(u.id);
-      if (u.castKind !== 0 && u.castTotal > 0 && !dead) cdBar(Math.min(1, Math.max(0, 1 - u.castLeft / u.castTotal)), lin(1, 0.8, 0.2));
-      else if (cd.valid && !dead) {
-        const f = cooldownFraction(cd.remaining, cd.total);
-        cdBar(f, f >= 1 ? lin(0.8, 0.5, 1) : lin(0.58, 0.25, 0.9));
-      }
+      this.drawAbilityTiles(sim, u, s, i, S, dead);
       if (selected) {
         const gl = 4 * S;
         this.g.fillStyle(kHud.goldLit, 0.32).fillRoundedRect(s.portrait.x - gl, s.portrait.y - gl, s.portrait.w + 2 * gl, s.portrait.h + 2 * gl, 8 * S);
@@ -731,7 +728,7 @@ export class Hud {
         this.g.fillStyle(kHud.hp, 1).fillRoundedRect(s.hp.x + hi, s.hp.y + hi, Math.max(hw, hh), hh * 0.62, hh * 0.3);
       }
       this.texts.centered(`pt.hp${i}`, `${Math.ceil(Math.max(0, u.hp))} / ${Math.round(maxHp)}`, new Rect(s.hpText.x, s.hp.bottom(), s.hpText.w, s.hpText.bottom() - s.hp.bottom() + 0.55 * s.hpText.h), kBaseFontPx * 1.1 * S, kTextLight);
-      const whole = new Rect(s.cooldown.x, s.cooldown.y, s.portrait.w, s.hp.bottom() - s.cooldown.y);
+      const whole = s.whole;
       if (this.armed !== undefined && !miracleTargetsEnemy(this.armed) && !dead) outline(this.gTop, whole, lin(1, 0.85, 0.3), 3, 0.95);
       else if (u.shieldLeft > 0) outline(this.gTop, whole, lin(0.45, 0.8, 1), 3, 0.95);
       const id = u.id;
@@ -741,6 +738,65 @@ export class Hud {
         this.sideDirty = true;
       });
     }
+  }
+
+  /** The two ability tiles beside a portrait (director, Nov 21): the primary above, the second below. A tile shows the ability's icon with a
+   *  dark sweep and the seconds left while it recharges; a hero with no second ability yet shows a placeholder tile. */
+  private drawAbilityTiles(sim: CombatSim, u: Unit, s: Layout['slots'][number], i: number, S: number, dead: boolean): void {
+    for (let k = 0; k < 2; ++k) {
+      const r = s.abilities[k];
+      const id = k === 0 ? u.abilityId : u.extraAbilities[0]?.id ?? '';
+      const cd = sim.abilityCooldown(u.id, k);
+      const casting = !dead && u.castKind === CastKind.Ability && id !== '' && u.castAbility === id;
+      const f = cd.valid ? cooldownFraction(cd.remaining, cd.total) : 1;
+      const ready = id !== '' && !dead && f >= 1;
+      plate(this.g, r, S, id === '' ? lin(0.05, 0.05, 0.07) : kHud.ink, { edge: casting ? lin(1, 0.8, 0.2) : ready ? kHud.gold : kHud.bronze, radius: 5 * S, sheen: 0 });
+      if (id === '') {
+        // Placeholder until the hero gets a second ability.
+        this.texts.centered(`pt.ab${i}_${k}`, '?', r, r.h * 0.62, lin(0.4, 0.38, 0.45), 1, true);
+        continue;
+      }
+      const [name, color] = kAbilityIcons[id] ?? ['sun', 0xf1ece4];
+      icon(this.g, name, r.x + r.w / 2, r.y + r.h / 2, r.h * 0.3, dead ? 0x6a6a72 : color);
+      if (!dead && f < 1) {
+        const inset = Math.max(1, S);
+        this.g.fillStyle(0x000000, 0.6).fillRoundedRect(r.x + inset, r.y + inset, r.w - 2 * inset, (r.h - 2 * inset) * (1 - f), 4 * S);
+        this.texts.centered(`pt.ab${i}_${k}`, cd.remaining >= 10 ? `${Math.ceil(cd.remaining)}` : cd.remaining.toFixed(1), r, r.h * 0.46, 0xffffff, 1, true);
+      }
+      if (casting) this.gTop.lineStyle(Math.max(2, 2 * S), lin(1, 0.8, 0.2), 1).strokeRoundedRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 5 * S);
+    }
+  }
+
+  /** Found gear waits for the player to pick the hero it goes to (director, Nov 21): a banner over the room with one button per hero. */
+  private drawGearChoice(L: Layout, S: number): void {
+    const pending = this.rm.getPendingGear();
+    const party = this.party();
+    if (pending.length === 0 || party.length === 0 || !this.snap.runActive || this.snap.runEnded || this.overlayOpen) return;
+    const item = pending[0];
+    const weapon = item.slot === GearSlot.Weapon;
+    const w = Math.min(0.94 * L.roomArea.w, 640 * S), h = 104 * S;
+    const r = new Rect(L.roomArea.x + 0.5 * (L.roomArea.w - w), L.roomArea.y + 62 * S, w, h);
+    plate(this.g, r, S, kHud.panel, { edge: kHud.goldLit, sheen: 0.05 });
+    this.hit(r, 2, () => undefined);   // clicks on the banner do not reach the room
+    const more = pending.length > 1 ? `  (${pending.length - 1} more waiting)` : '';
+    this.texts.centered('gc.title', `Found a ${weapon ? 'weapon' : 'armor'} upgrade (${weapon ? 'Damage' : 'Health'} +10%): who gets it?${more}`,
+      new Rect(r.x, r.y + 4 * S, r.w, 26 * S), kBaseFontPx * 1.3 * S, lin(1, 0.92, 0.6));
+    const pad = 8 * S, bw = (r.w - pad * (party.length + 1)) / party.length, bh = r.h - 36 * S - pad;
+    const gear = this.rm.getFlow().getDungeonGear();
+    party.forEach((u, i) => {
+      const b = new Rect(r.x + pad + i * (bw + pad), r.y + 34 * S, bw, bh);
+      const hover = b.contains(this.mouse.x, this.mouse.y);
+      this.frame(b, lin(0.1, 0.09, 0.2), 0.95, hover, false);
+      const fs = Math.min(b.h - 8 * S, 52 * S);
+      const face = new Rect(b.x + 5 * S, b.y + (b.h - fs) / 2, fs, fs);
+      if (!this.face(`gc${i}`, u.name, face, !u.alive)) this.texts.centered(`gc.i${i}`, u.name.slice(0, 1), face, fs * 0.6, 0xffffff, 1, true);
+      const tx = new Rect(face.right() + 6 * S, b.y, b.right() - face.right() - 10 * S, b.h);
+      const level = gear.get(gearKey(u.name, item.slot)) ?? 0;
+      this.texts.fit(`gc.n${i}`, heroLabel(u.name), new Rect(tx.x, tx.y + 2 * S, tx.w, tx.h * 0.5), kBaseFontPx * 1.25 * S, kTextLight);
+      this.texts.fit(`gc.l${i}`, `${weapon ? 'Weapon' : 'Armor'} +${level} → +${level + 1}`, new Rect(tx.x, tx.y + tx.h * 0.5, tx.w, tx.h * 0.42), kBaseFontPx * 1.05 * S, kTextDim);
+      const cls = u.name;
+      this.hit(b, 3, () => { this.rm.assignPendingGear(cls); this.sideDirty = true; });
+    });
   }
 
   private drawGearToast(L: Layout, S: number): void {

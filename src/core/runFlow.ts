@@ -80,6 +80,8 @@ export interface FlowCheckpoint {
   sidebar: { className: string; ranks: [string, number][] }[];
   dungeonGear: [string, number][];
   gearRng: bigint;
+  /** Gear found but not yet given to a hero (choice mode, director Nov 21); absent in older saves. */
+  pendingGear?: PendingGear[];
 }
 
 /** What the combat layer needs to run one fight room. */
@@ -153,6 +155,8 @@ export function formatRoomLine(floor: number, node: number, room: string, result
 
 export interface PartyLuck { essencePerKill: number; essencePerRoom: number; goldPerKill: number; goldPerRoom: number }
 export interface GearDrop { className: string; slot: GearSlot; dungeonLevel: number }
+/** A found piece of gear waiting for the player to pick a hero. `suggested` is the hero the old random roll picked (what Auto gives it to). */
+export interface PendingGear { slot: GearSlot; suggested: string }
 
 const FIGHT_SEED_MUL = 0xa24baed4963ee407n;
 const GEAR_SEED_XOR = 0x6ea2d40f5eedc0den;
@@ -179,6 +183,8 @@ export class RunFlow {
   private luck: PartyLuck = { essencePerKill: 0, essencePerRoom: 0, goldPerKill: 0, goldPerRoom: 0 };
   private dungeonGear = new Map<string, number>();
   private drops: GearDrop[] = [];
+  private gearChoice = false;
+  private pendingGear: PendingGear[] = [];
   private gearRng = new Rng(0);
   private builtSize: FloorSize;
   private priestStart: boolean | undefined;   // undefined: the original rescue rules (soaks, parity, older saves)
@@ -219,6 +225,7 @@ export class RunFlow {
     this.priestRescued = this.priestEvent = false;
     this.dungeonGear.clear();
     this.drops = [];
+    this.pendingGear = [];
     this.gearRng = new Rng(s ^ GEAR_SEED_XOR);
     this.pendingFight = false;
     this.resetFloorState();
@@ -252,6 +259,7 @@ export class RunFlow {
       sidebar: this.sidebar.exportRanks(),
       dungeonGear: [...this.dungeonGear.entries()],
       gearRng: this.gearRng.getState(),
+      ...(this.pendingGear.length > 0 ? { pendingGear: this.pendingGear.map((p) => ({ ...p })) } : {}),
     };
   }
 
@@ -299,6 +307,7 @@ export class RunFlow {
     this.sidebar.importRanks(cp.sidebar);
     this.dungeonGear = new Map(cp.dungeonGear);
     this.drops = [];
+    this.pendingGear = (cp.pendingGear ?? []).map((p) => ({ ...p }));
     this.gearRng = new Rng(cp.gearRng);
     this.pendingFight = false;
     if (!this.isCleared(run.currentNode)) this.enterCurrent();
@@ -375,6 +384,18 @@ export class RunFlow {
     return d;
   }
   getDungeonGear(): ReadonlyMap<string, number> { return this.dungeonGear; }
+  /** Choice mode (the live game): found gear waits for the player to pick a hero instead of going to a random one. Off keeps the
+   *  random hero, which the soaks and the Unreal parity rely on. The rolls are drawn either way, so the random stream never changes. */
+  setGearChoice(on: boolean): void { this.gearChoice = on; }
+  getPendingGear(): readonly PendingGear[] { return this.pendingGear; }
+  /** Gives the pending piece `index` to `className` (a hero in the party). Returns false, changing nothing, for a bad index or hero. */
+  assignGear(index: number, className: string): boolean {
+    const p = this.pendingGear[index];
+    if (!p || !this.run.party.includes(className)) return false;
+    this.pendingGear.splice(index, 1);
+    this.applyGear(className, p.slot);
+    return true;
+  }
   consumeGoldDelta(): number {
     const g = this.unsavedGold;
     this.unsavedGold = 0;
@@ -498,6 +519,10 @@ export class RunFlow {
     if (this.run.party.length === 0) return;
     const className = this.run.party[this.gearRng.nextInt(0, this.run.party.length - 1)];
     const slot = this.gearRng.nextInt(0, 1) === 0 ? GearSlot.Weapon : GearSlot.Armor;
+    if (this.gearChoice) this.pendingGear.push({ slot, suggested: className });
+    else this.applyGear(className, slot);
+  }
+  private applyGear(className: string, slot: GearSlot): void {
     const key = gearKey(className, slot);
     const level = (this.dungeonGear.get(key) ?? 0) + 1;
     this.dungeonGear.set(key, level);

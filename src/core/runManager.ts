@@ -21,7 +21,7 @@ import { kMetaMaxGold, makeMeta, parseMeta, resetProgress, serializeMeta, type M
 import { MiracleKind, MiracleResult } from './miracleGauge';
 import { RosterResult, activeParty, kActiveSlots, rosterIsActive, rosterOwns, rosterPriestClass, toggleActiveHero } from './roster';
 import { RunBot } from './runBot';
-import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, runOutcomeName, type RoomEntry, type RunResults } from './runFlow';
+import { EntryKind, FightResult, RunFlow, RunOutcome, TeleportResult, runOutcomeName, type PendingGear, type RoomEntry, type RunResults } from './runFlow';
 import { buildMapView, type MapView } from './runMapView';
 import { parseRunSave, serializeRunSave } from './runSave';
 import { heroLabel, heroSkills, heroStatLines, kHeroOrder, roleLabel, rolePriority, type HeroSheet } from './heroSheet';
@@ -157,9 +157,11 @@ export interface RunManagerOptions {
   castTimes: boolean;
   /** The game's start (director, Nov 21): the Priestess is owned from the start and there is no rescue. Off for the Unreal parity rules. */
   priestFromStart: boolean;
+  /** Found gear waits for the player to choose the hero (director, Nov 21). Off gives it to a random hero (soaks, parity rules). */
+  gearChoice: boolean;
 }
 
-export const makeRunManagerOptions = (over: Partial<RunManagerOptions> = {}): RunManagerOptions => ({ enemyMult: 1.3, castTimes: true, priestFromStart: false, ...over });
+export const makeRunManagerOptions = (over: Partial<RunManagerOptions> = {}): RunManagerOptions => ({ enemyMult: 1.3, castTimes: true, priestFromStart: false, gearChoice: false, ...over });
 
 /** The test setup of the next playable run (one shot): start floor and the Priest already in the party (tol.NextRun). */
 export interface NextRunSetup { startFloor: number; priest: boolean }
@@ -261,7 +263,18 @@ export class RunManager {
   /** Saves a settings change (volume, default speed) made directly on getMeta(). */
   saveSettings(): void { this.ensureMetaLoaded(); this.saveMeta(); }
 
+  /** Found gear still waiting for the player to pick a hero (empty unless the gearChoice option is on). */
+  getPendingGear(): readonly PendingGear[] { return this.flow.getPendingGear(); }
+  /** The player gives the oldest pending piece of gear to `className`. */
+  assignPendingGear(className: string): boolean {
+    if (!this.flow.assignGear(0, className)) return false;
+    this.syncMeta();
+    return true;
+  }
+
   private syncMeta(): void {
+    // Auto does not stop to ask: it gives each piece to the hero the old random roll picked.
+    if (this.auto) for (let p = this.flow.getPendingGear()[0]; p; p = this.flow.getPendingGear()[0]) if (!this.flow.assignGear(0, p.suggested)) break;
     let changed = false;
     const gold = this.flow.consumeGoldDelta();
     if (gold !== 0) {
@@ -320,6 +333,7 @@ export class RunManager {
 
   private flowStart(seed: number, testSetup: boolean): void {
     this.flow = new RunFlow();
+    this.flow.setGearChoice(this.opts.gearChoice);
     if (this.floorSize) this.flow.setFloorSize(this.floorSize);
     this.ensureMetaLoaded();
     this.grantStartingPriest();
@@ -521,6 +535,7 @@ export class RunManager {
     this.ensureMetaLoaded();
     this.playSpeed = Math.max(1, this.meta.defaultSpeed);
     const flow = new RunFlow();
+    flow.setGearChoice(this.opts.gearChoice);
     if (this.floorSize) flow.setFloorSize(this.floorSize);
     this.flow = flow;
     this.applyMetaToFlow();
