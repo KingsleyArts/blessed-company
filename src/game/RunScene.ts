@@ -20,6 +20,10 @@ import type { Params } from './params';
 import { RoomView } from './roomView';
 import { RoomCanvas } from './roomCanvas';
 import { UnitView, createGoblinAnims } from './unitView';
+import { FramePacer } from './framePacer';
+
+/** Paused and untouched for this long: the frame rate drops to the idle pace. */
+const kIdleAfterMs = 1500;
 
 export class RunScene extends Phaser.Scene {
   rm!: RunManager;
@@ -36,6 +40,7 @@ export class RunScene extends Phaser.Scene {
   private playPending = 0;
   private infoClock = 0;
   private dprNow = 1;
+  private pacer: FramePacer | undefined;
   private music!: Music;
   private settings!: Settings;
 
@@ -46,6 +51,7 @@ export class RunScene extends Phaser.Scene {
   create(): void {
     this.params = this.registry.get('params') as Params;
     this.dprNow = (this.registry.get('dpr') as number) ?? 1;
+    this.pacer = this.registry.get('pacer') as FramePacer | undefined;
     const data = loadCombatData(ClassDataCsv, EnemyDataCsv, AbilityDataCsv, AbilityEffectDataCsv);
     if (!data) throw new Error('combat data failed to load');
     this.store = new SlotStore();
@@ -299,6 +305,11 @@ export class RunScene extends Phaser.Scene {
     this.hudTexts.begin();
     this.hud.overlayOpen = this.overlay.isOpen();
     const menu = this.overlay.kind === 'title' || this.overlay.kind === 'saves';
+    // Battery: a full-screen DOM page (title, saves, Temple) hides the canvas, so nothing is drawn and the loop slows to a crawl; a paused,
+    // untouched game drops to a few frames a second (see framePacer.ts). Any touch or key brings the full pace back at once.
+    const covered = menu || this.overlay.kind === 'temple';
+    this.sys.setVisible(!covered);
+    this.pacer?.set(covered ? 'covered' : this.hud.ui.paused && this.pacer.sinceInput() > kIdleAfterMs ? 'idle' : 'active');
     this.hud.preRun = (this.overlay.kind === 'temple' || menu) && !this.rm.getFlow().active();
     // Play time counts while a slot is being played (not on the title or Load screens); the card is updated every 15 s.
     if (this.store.slot !== undefined && !menu) {
@@ -312,9 +323,9 @@ export class RunScene extends Phaser.Scene {
     this.room.syncToRun();
     this.room.update(dt);
     this.rm.tick(dt);
-    if (this.room.needsRedraw()) this.room.draw(this.roomCanvas, area, this.dprNow);
-    this.units.update(dt, this.hud.scale, false);
-    this.hud.draw();
+    if (!covered && this.room.needsRedraw()) this.room.draw(this.roomCanvas, area, this.dprNow);
+    if (!covered) this.units.update(dt, this.hud.scale, false);
+    if (!covered) this.hud.draw();
     this.overlay.setArea(area);
     const run = this.rm.getFlow().getRun();
     this.music.update(this.rm.getFlow().active(), run.floorNumber);
