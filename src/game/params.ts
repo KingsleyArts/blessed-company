@@ -1,4 +1,4 @@
-// Query-string options for testing (the Unreal tol.* console variables): ?seed=N&floor=N&priest=1&mult=1.3&cast=0&test=1&reset=1.
+// Query-string options for testing (the Unreal tol.* console variables): ?seed=N&floor=N&priest=1&mult=1.3&cast=0&test=1&reset=1&fps=30&dpr=1.5.
 export interface Params {
   seed: number;
   /** tol.NextRun start floor (1 = normal). */
@@ -10,6 +10,10 @@ export interface Params {
   testing: boolean;
   /** Wipe the saved progress on load. */
   reset: boolean;
+  /** Frame-rate cap: -1 automatic (30 on touch devices, uncapped on desktop), 0 uncapped, N a cap. */
+  fps: number;
+  /** Pixel-ratio cap: 0 automatic (1.5 on touch devices, 2 on desktop). */
+  dpr: number;
 }
 
 export function readParams(search: string, dev = import.meta.env.DEV): Params {
@@ -27,5 +31,7 @@ export function readParams(search: string, dev = import.meta.env.DEV): Params {
     castTimes: flag('cast', true),
     testing: flag('test', dev),
     reset: flag('reset', false),
+    fps: Math.trunc(num('fps', -1)),
+    dpr: Math.max(0, num('dpr', 0)),
   };
 }
